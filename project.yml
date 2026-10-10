@@ -8,7 +8,7 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.1"
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "3"
     ENABLE_HARDENED_RUNTIME: YES
 targets:
   Feather:
@@ -29,7 +29,7 @@ targets:
       properties:
         CFBundleDisplayName: Feather
         CFBundleShortVersionString: "0.1.1"
-        CFBundleVersion: "2"
+        CFBundleVersion: "3"
         LSApplicationCategoryType: public.app-category.productivity
         NSCameraUsageDescription: Websites you open in Feather can ask to use your camera (for example video calls).
         NSMicrophoneUsageDescription: Websites you open in Feather can ask to use your microphone (for example video calls).

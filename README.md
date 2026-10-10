@@ -39,7 +39,7 @@ Feather is designed to be light, but **no measurements against Safari or any oth
 
 ## Privacy
 
-No analytics, accounts or telemetry. Tabs, history and bookmarks are stored locally in the app's sandbox container. Besides the pages you open, Feather makes one request of its own: it downloads the icon of sites you visit to show in the tab. The default search engine is Google, so searches typed in the address bar go to Google. The app runs in the macOS App Sandbox.
+No analytics, accounts or telemetry. Tabs, history and bookmarks are stored locally in the app's sandbox container. Besides the pages you open, Feather makes one request of its own: it downloads the icon of sites you visit to show in the tab. Icons are saved locally (about 1-4 KB each, at most 400 files, refreshed weekly) so tabs show them straight after a relaunch; Clear History removes them except for sites you still have open or bookmarked. The default search engine is Google, so searches typed in the address bar go to Google. The app runs in the macOS App Sandbox.
 
 ## Build and run
 

@@ -63,7 +63,7 @@ struct SettingsView: View {
                 }
             }
             Section("Privacy") {
-                Button("Clear Browsing History") { store.history.clear() }
+                Button("Clear Browsing History") { store.clearHistory() }
                 Button("Clear Website Data…") { confirmClearData = true }
             }
             Section("Diagnostics") {

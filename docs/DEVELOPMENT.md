@@ -37,6 +37,7 @@ Run from the repo root after a Debug build. They drive the real app and need a l
 | `tests/restore-test.sh` | `kill -9` and relaunch: tabs, pins, history, lazy restore, page-process kill, graceful quit |
 | `tests/ready-test.sh` | downloads, cookie import, links from other apps (running and cold start) |
 | `tests/persistence-test.py` | the real app against damaged files: empty, truncated, garbage, wrong schema, one bad tab, bad state blob, missing, newer version, primary and previous bad (restores a backup), everything bad (starts blank, keeps every damaged copy); an unwritable folder (banner, then the retry succeeds); a second instance (writes nothing); a sudden mass-close (backup of the fuller session); a copy of the real session. Each case asserts the right tabs came back *and* that no damaged file was destroyed |
+| `tests/favicon-test.py` | favicons persist: icons are saved for two sites, the app is relaunched without loading them, and the never-loaded tab still shows its icon (sends no input) |
 | `tests/ux-test.py` | **real keyboard and mouse events**: ⌘T and typing right after it (no pause), Return, searching, ⌘W/⇧⌘T, ⌘1/2, ⌃Tab, Escape, ⌘L, pin, zoom, find, ⌘S, `target=_blank` and ⌘-click links (needs Accessibility permission; types and moves the cursor) |
 | `tests/drag-test.py` | real mouse drags in the sidebar (needs Accessibility permission for the terminal) |
 | `tests/filmstrip.py <dir>` | not a pass/fail test: captures frames of the real window mid-animation for review |

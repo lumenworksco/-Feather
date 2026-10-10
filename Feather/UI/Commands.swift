@@ -73,7 +73,7 @@ struct BrowserCommands: Commands {
                 Divider()
                 Button("Show Backups in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.sessions.backupsDirectory]) }
             }
-            Button("Clear History") { history.clear() }.disabled(history.entries.isEmpty)
+            Button("Clear History") { store.clearHistory() }.disabled(history.entries.isEmpty)
         }
         CommandMenu("Bookmarks") {
             Button("Bookmark This Page") { toggleBookmark() }.keyboardShortcut("d")

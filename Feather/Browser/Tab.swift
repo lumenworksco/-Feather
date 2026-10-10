@@ -45,6 +45,8 @@ final class Tab: NSObject, ObservableObject, Identifiable {
         self.title = title
         self.store = store
         super.init()
+        // A restored tab hasn't loaded, but its site's icon was saved last time: show it right away.
+        if let host = url?.host { favicon = store.favicons.cached(host: host) }
     }
 
     // MARK: Lifecycle

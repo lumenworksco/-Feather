@@ -52,6 +52,22 @@ enum SelfTest {
                   SessionParser.parse(Data("garbage".utf8)) == nil && SessionParser.parse(Data(#"{"a":1}"#.utf8)) == nil
                   && SessionParser.parse(Data(#"{"tabs":[]}"#.utf8)) == nil && SessionParser.parse(Data()) == nil)
 
+            // Favicons survive a relaunch, stay tiny, refresh weekly and obey Clear History.
+            let favDir = tmp.appendingPathComponent("Favicons", isDirectory: true)
+            let f1 = Favicons(directory: favDir)
+            let red = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { r in NSColor.red.setFill(); r.fill(); return true }
+            f1.put(red, host: "example.com"); f1.put(red, host: "other.org"); f1.flush()
+            let f2 = Favicons(directory: favDir)
+            let fileSize = ((try? fm.attributesOfItem(atPath: favDir.appendingPathComponent("example.com.png").path)[.size]) as? Int) ?? -1
+            check("a saved favicon comes back in a brand-new session (restored tabs show icons without loading)", f2.cached(host: "example.com") != nil && f2.cached(host: "nothere.net") == nil)
+            check("a saved favicon is tiny on disk (under 5 KB)", fileSize > 0 && fileSize < 5_000, "\(fileSize) bytes")
+            check("a fresh icon is not stale", !f2.isStale(host: "example.com"))
+            try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-10 * 86400)], ofItemAtPath: favDir.appendingPathComponent("example.com.png").path)
+            check("an icon older than a week is due for a refresh, and still shows meanwhile", f2.isStale(host: "example.com") && f2.cached(host: "example.com") != nil)
+            f2.prune(keeping: ["other.org"]); f2.flush()
+            check("Clear History removes icons except for sites still open or bookmarked",
+                  Favicons(directory: favDir).cached(host: "example.com") == nil && Favicons(directory: favDir).cached(host: "other.org") != nil)
+
             // Backup retention.
             let now = Date(timeIntervalSince1970: 1_800_000_000)
             func entry(_ minutesAgo: Double, _ tabs: Int) -> BackupEntry {

@@ -461,6 +461,13 @@ final class TabStore: ObservableObject {
 
     func dismissBanner() { banner = nil }
 
+    /// Clears browsing history, and the saved icons of sites you visited, except those still open or bookmarked.
+    func clearHistory() {
+        history.clear()
+        let open = tabs.compactMap { $0.url?.host } + bookmarks.items.compactMap { $0.url.host }
+        favicons.prune(keeping: Set(open))
+    }
+
     /// Quit, sleep, shutdown: refresh every tab's state and write synchronously.
     func flushAll() {
         saveTask?.cancel(); saveTask = nil
