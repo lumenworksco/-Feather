@@ -1,0 +1,305 @@
+import SwiftUI
+import WebKit
+
+/// Everything needed to put the user's tabs back after a quit or crash. `state` is WKWebView.interactionState
+/// (back/forward list + scroll position). Text typed into web forms and a page's JavaScript state are NOT saved.
+private struct SessionTab: Codable { var url: URL?; var title: String; var state: Data?; var pinned: Bool? }
+private struct SavedClosed: Codable { var url: URL; var title: String; var pinned: Bool? }
+private struct Session: Codable { var tabs: [SessionTab]; var selected: Int; var closed: [SavedClosed]? }
+
+/// Owns the tab list and selection, the shared WebKit configuration, and the app's local data.
+@MainActor
+final class TabStore: ObservableObject {
+    @Published private(set) var tabs: [Tab] = []
+    @Published private(set) var selectedID: Tab.ID?
+    @Published private(set) var lastRestoreMilliseconds: Int?
+    @Published private(set) var addressFocusRequest = 0
+
+    let settings = BrowserSettings()
+    let history = History()
+    let bookmarks = Bookmarks()
+    let favicons = Favicons()
+    let downloads = Downloads()
+    private(set) lazy var lifecycle = LifecycleManager(store: self)
+
+    /// False until the app has finished launching. Creating WKWebViews inside SwiftUI's @StateObject init
+    /// (before the scene exists) stops the window from ever appearing, so loading waits for this.
+    private(set) var isReady = false
+    private let configuration: WKWebViewConfiguration
+    private var closedTabs: [ClosedTab] = []
+    private var sessionTask: Task<Void, Never>?
+
+    var selected: Tab? { tabs.first { $0.id == selectedID } }
+    var liveCount: Int { tabs.filter(\.isLoaded).count }
+
+    init() {
+        let config = WKWebViewConfiguration()
+        config.preferences.isElementFullscreenEnabled = true      // YouTube fullscreen
+        // Without a Safari token some sites (notably Google sign-in) treat WKWebView as an embedded browser.
+        config.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
+        // Tracks whether the user typed into a form field, so the lifecycle manager never unloads unsaved input.
+        config.userContentController.addUserScript(WKUserScript(source: Self.dirtyTracker, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        configuration = config
+
+        // `--open=URL` (repeatable). A bare URL argument would make AppKit treat the launch as "open a document" and SwiftUI would skip creating the window.
+        let launchURLs = CommandLine.arguments.filter { $0.hasPrefix("--open=") }.compactMap { URL(string: String($0.dropFirst(7))) }
+        restoreSession()
+        let external = Self.pendingExternal
+        Self.pendingExternal = []
+        if tabs.isEmpty && launchURLs.isEmpty && external.isEmpty { newTab() }
+        launchURLs.forEach { newTab(url: $0) }
+        // `--open-pinned=URL` (repeatable): open a pinned tab (used by tests).
+        CommandLine.arguments.filter { $0.hasPrefix("--open-pinned=") }.compactMap { URL(string: String($0.dropFirst(14))) }
+            .forEach { setPinned(newTab(url: $0), true) }
+        external.forEach { openExternal($0) }
+        Self.current = self
+        if Self.bench { installBenchSignals() }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isReady = true
+                // Cookies from a profile import must be in place before any page loads, or the first loads would be signed out.
+                if CookieImport.isPending { Task { await CookieImport.run(); self.finishLaunch() } } else { self.finishLaunch() }
+            }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushAll() }
+        }
+        // Also save whenever the user leaves the app, so a crash while it's in the background loses nothing.
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveSession() }
+        }
+    }
+
+    private func finishLaunch() {
+        if CommandLine.arguments.contains("--load-all") { tabs.forEach { $0.ensureLoaded() } }     // benchmarks measure every launch URL as a live tab
+        selected?.ensureLoaded()
+        lifecycle.enforce()
+        tabsChanged()
+    }
+
+    // MARK: Links opened from other apps (default browser)
+
+    static weak var current: TabStore?
+    static var pendingExternal: [URL] = []
+
+    static func open(external url: URL) {
+        guard ["http", "https", "file"].contains(url.scheme?.lowercased() ?? "") else { return }
+        if let store = current { store.openExternal(url) } else { pendingExternal.append(url) }
+    }
+
+    func openExternal(_ url: URL) {
+        // A lone blank tab (fresh launch) is reused instead of leaving an empty tab behind.
+        if tabs.count == 1, let only = tabs.first, only.url == nil, !only.isLoaded { only.open(url); select(only.id) }
+        else { newTab(url: url) }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func makeWebView() -> WKWebView { WKWebView(frame: .zero, configuration: configuration) }
+
+    // MARK: Tabs
+
+    @discardableResult
+    func newTab(url: URL? = nil, select: Bool = true) -> Tab {
+        let tab = Tab(url: url, store: self)
+        tabs.append(tab)
+        if select { self.select(tab.id) } else { tabsChanged() }
+        if url == nil { addressFocusRequest += 1 }
+        return tab
+    }
+
+    func openPopup(configuration: WKWebViewConfiguration, from opener: Tab, select: Bool = true) -> WKWebView {
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let tab = Tab(store: self)
+        tab.attach(webView, restore: false)
+        let pinnedCount = tabs.filter(\.isPinned).count
+        tabs.insert(tab, at: max((tabs.firstIndex { $0 === opener } ?? tabs.count - 1) + 1, pinnedCount))   // never into the pinned group
+        if select { self.select(tab.id) } else { tabsChanged() }
+        return webView
+    }
+
+    func select(_ id: Tab.ID) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        selected?.lastActive = Date()
+        selectedID = id
+        tab.lastActive = Date()
+        tab.ensureLoaded()
+        lifecycle.enforce()
+        tabsChanged()
+    }
+
+    func select(index: Int) {
+        guard !tabs.isEmpty else { return }
+        select(tabs[min(max(index, 0), tabs.count - 1)].id)
+    }
+
+    func selectNext(_ step: Int) {
+        guard let i = tabs.firstIndex(where: { $0.id == selectedID }), !tabs.isEmpty else { return }
+        select(tabs[(i + step + tabs.count) % tabs.count].id)
+    }
+
+    func close(_ id: Tab.ID) {
+        guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs.remove(at: i)
+        if let closed = tab.close() {
+            closedTabs.append(closed)
+            if closedTabs.count > 10 { closedTabs.removeFirst() }
+        }
+        if selectedID == id {
+            if tabs.isEmpty { newTab() } else { select(tabs[min(i, tabs.count - 1)].id) }
+        } else {
+            tabsChanged()
+        }
+    }
+
+    func reopenClosed() {
+        guard let closed = closedTabs.popLast() else { return }
+        let tab = Tab(url: closed.url, title: closed.title, store: self)
+        tab.savedState = closed.state
+        tab.isPinned = closed.pinned
+        tabs.insert(tab, at: closed.pinned ? tabs.filter(\.isPinned).count : tabs.count)
+        select(tab.id)
+    }
+
+    // MARK: Pinning
+
+    /// Pinned tabs form a group at the front of `tabs`, so tab order, Cmd+1-9 and next/previous follow what the sidebar shows.
+    func setPinned(_ tab: Tab, _ pinned: Bool) {
+        guard tab.isPinned != pinned, let i = tabs.firstIndex(where: { $0 === tab }) else { return }
+        tabs.remove(at: i)
+        tab.isPinned = pinned
+        tabs.insert(tab, at: tabs.filter(\.isPinned).count)      // the tab is out of the array here: end of the pinned group / top of the rest
+        tabsChanged()
+    }
+
+    func togglePin(_ tab: Tab) { setPinned(tab, !tab.isPinned) }
+
+    /// Drag and drop: put `tab` before `target` (or at the end of the destination group when `target` is nil).
+    /// Whether it ends up pinned is decided by where it was dropped, and the pinned-first order is always kept.
+    func move(_ tab: Tab, before target: Tab?, pinned: Bool) {
+        guard target !== tab, let from = tabs.firstIndex(where: { $0 === tab }) else { return }
+        tabs.remove(at: from)
+        tab.isPinned = pinned
+        let pinnedCount = tabs.filter(\.isPinned).count          // the tab itself is out of the array here
+        var index = target.flatMap { t in tabs.firstIndex { $0 === t } } ?? (pinned ? pinnedCount : tabs.count)
+        index = pinned ? min(index, pinnedCount) : max(index, pinnedCount)
+        tabs.insert(tab, at: index)
+        tabsChanged()
+    }
+
+    func tab(withID id: UUID) -> Tab? { tabs.first { $0.id == id } }
+
+    func focusAddress() { addressFocusRequest += 1 }
+
+    // MARK: Bookkeeping
+
+    /// Tab list/selection/load state changed: refresh the UI and schedule a session save.
+    func tabsChanged() {
+        objectWillChange.send()
+        sessionChanged()
+    }
+
+    /// Schedules a save ~0.6 s from the *first* change (not restarted by later ones), so a page that keeps changing
+    /// its title or URL can't postpone saving forever, and a crash loses at most the last fraction of a second.
+    func sessionChanged() {
+        guard sessionTask == nil else { return }
+        sessionTask = Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            sessionTask = nil
+            saveSession()
+        }
+    }
+
+    func noteRestore(milliseconds: Int) {
+        lastRestoreMilliseconds = milliseconds
+        if Self.bench { print("RESTORE_MS \(milliseconds)"); fflush(stdout) }
+        Log.lifecycle.info("restored unloaded tab in \(milliseconds) ms")
+    }
+
+    // MARK: Benchmark hooks (`--bench`)
+    // SIGUSR1: select the first unloaded tab and report how long it took to come back (RESTORE_MS).
+    // SIGUSR2: print how many web views are live (LIVE n/m). Used by bench/bench.py; inert without --bench.
+
+    static let bench = CommandLine.arguments.contains("--bench")
+    private var signalSources: [DispatchSourceSignal] = []
+
+    private func installBenchSignals() {
+        func listen(_ sig: Int32, _ action: @escaping @MainActor (TabStore) -> Void) {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler { [weak self] in MainActor.assumeIsolated { if let self { action(self) } } }
+            source.resume()
+            signalSources.append(source)
+        }
+        listen(SIGUSR1) { store in
+            if let tab = store.tabs.first(where: { !$0.isLoaded && $0.url != nil }) { store.select(tab.id) }
+            else { print("RESTORE_NONE"); fflush(stdout) }
+        }
+        listen(SIGUSR2) { store in
+            print("LIVE \(store.liveCount)/\(store.tabs.count)")
+            for (i, t) in store.tabs.enumerated() {
+                print("TAB \(i) \(t.isLoaded ? "live" : "unloaded") \(t.id == store.selectedID ? "selected" : "-") back=\(t.webView?.canGoBack ?? false) \(t.url?.absoluteString ?? "-") | \(t.title) | zoom=\(t.webView?.pageZoom ?? 0) | pinned=\(t.isPinned) icon=\(t.favicon != nil)")
+            }
+            fflush(stdout)
+        }
+    }
+
+    // MARK: Persistence
+
+    private static let maxStateBytes = 256_000      // skip pathological histories rather than bloat every save
+
+    private func saveSession() {
+        let entries = tabs.map { tab -> SessionTab in
+            // Live tab: ask the web view now. Unloaded tab: the state captured when it was unloaded/restored from disk.
+            let raw = tab.webView?.interactionState ?? tab.savedState
+            var data = raw as? Data
+            if data == nil, let raw { Log.lifecycle.error("interactionState is \(String(describing: type(of: raw))), not Data; not saved") }
+            if let d = data, d.count > Self.maxStateBytes { data = nil }
+            return SessionTab(url: tab.url, title: tab.title, state: data, pinned: tab.isPinned ? true : nil)
+        }
+        let session = Session(tabs: entries,
+                              selected: tabs.firstIndex { $0.id == selectedID } ?? 0,
+                              closed: closedTabs.suffix(10).map { SavedClosed(url: $0.url, title: $0.title, pinned: $0.pinned ? true : nil) })
+        Storage.save(session, as: "session.json")
+    }
+
+    /// Restored tabs stay unloaded; only the selected one gets a web view, so launch cost doesn't scale with tab count.
+    private func restoreSession() {
+        guard let session = Storage.load("session.json", as: Session.self), !session.tabs.isEmpty else { return }
+        tabs = session.tabs.map { saved in
+            let tab = Tab(url: saved.url, title: saved.title, store: self)
+            tab.savedState = saved.state
+            tab.isPinned = saved.pinned ?? false
+            return tab
+        }
+        tabs = tabs.filter(\.isPinned) + tabs.filter { !$0.isPinned }
+        closedTabs = (session.closed ?? []).map { ClosedTab(url: $0.url, title: $0.title, state: nil, pinned: $0.pinned ?? false) }
+        select(index: session.selected)
+    }
+
+    private func flushAll() {
+        sessionTask?.cancel()
+        sessionTask = nil
+        saveSession()
+        history.flush()
+        bookmarks.flush()
+        Storage.drain()
+    }
+
+    // Typed-into-a-field detection. Search boxes and non-text inputs are ignored; a submit resets the flag.
+    private static let dirtyTracker = """
+    (function () {
+      if (window.__featherDirty !== undefined) return;
+      window.__featherDirty = false;
+      addEventListener('input', function (e) {
+        var t = e.target; if (!t) return;
+        var n = (t.tagName || '').toLowerCase();
+        if (n === 'textarea' || t.isContentEditable ||
+            (n === 'input' && !/^(checkbox|radio|submit|button|range|color|hidden|search|file)$/i.test(t.type || 'text'))) {
+          window.__featherDirty = true;
+        }
+      }, true);
+      addEventListener('submit', function () { window.__featherDirty = false; }, true);
+    })();
+    """
+}

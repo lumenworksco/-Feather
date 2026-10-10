@@ -1,0 +1,48 @@
+name: Feather
+options:
+  bundleIdPrefix: dev.feather
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+targets:
+  Feather:
+    type: application
+    platform: macOS
+    sources: [Feather]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.feather.Feather
+        CODE_SIGN_ENTITLEMENTS: Feather/Feather.entitlements
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    info:
+      path: Feather/Info.plist
+      properties:
+        CFBundleDisplayName: Feather
+        LSApplicationCategoryType: public.app-category.productivity
+        NSCameraUsageDescription: Websites you open in Feather can ask to use your camera (for example video calls).
+        NSMicrophoneUsageDescription: Websites you open in Feather can ask to use your microphone (for example video calls).
+        NSLocationUsageDescription: Websites you open in Feather can ask for your location (for example maps).
+        NSLocationWhenInUseUsageDescription: Websites you open in Feather can ask for your location (for example maps).
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.feather.tab
+            UTTypeDescription: Feather tab
+            UTTypeConformsTo: [public.data]
+        CFBundleURLTypes:
+          - CFBundleURLName: Web address
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [http, https]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: HTML document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.html, public.xhtml]

@@ -1,0 +1,3 @@
+<!doctype html><title>Restore test page</title>
+<p>Changes its own URL with pushState (no navigation) one second after load, like a single-page app.</p>
+<script>setTimeout(function () { history.pushState({}, "", "/pushed?step=2"); document.title = "Restore test (pushed)"; }, 1000);</script>

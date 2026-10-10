@@ -1,0 +1,16 @@
+# build output and generated project files (run `xcodegen generate`)
+build/
+DerivedData/
+Feather.xcodeproj/
+Feather/Info.plist
+
+# local-only tooling that must never be published
+/private/
+
+# misc
+.DS_Store
+__pycache__/
+*.pyc
+*.log
+bench/results/*
+!bench/results/.gitkeep
