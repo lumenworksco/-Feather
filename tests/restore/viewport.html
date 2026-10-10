@@ -1,0 +1,7 @@
+<!doctype html><title>viewport</title>
+<script>
+// Values at the moment the page's first script runs: what a canvas app (Google Sheets) reads once at startup and keeps.
+var initial = window.innerWidth + "x" + window.innerHeight, dpr0 = window.devicePixelRatio;
+function report() { document.title = "initial=" + initial + " dpr0=" + dpr0 + " | now=" + window.innerWidth + "x" + window.innerHeight + " dpr=" + window.devicePixelRatio; }
+report(); setInterval(report, 300);
+</script>

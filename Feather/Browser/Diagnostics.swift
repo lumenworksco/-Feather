@@ -262,6 +262,16 @@ enum SelfTest {
         await settle(old)
         let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
         check("restored tab shows its page", old.webView?.url?.host == "example.com", "(\(ms) ms)")
+        // Canvas apps such as Google Sheets draw blurry unless the page sees a real outer window size, and pages loaded in
+        // the background must not see a 0x0 viewport.
+        if let wv = store.selected?.webView {
+            let dims = (try? await wv.evaluateJavaScript("[window.outerWidth, window.outerHeight].join('x')")) as? String
+            check("pages see a real outer window size (Google Sheets needs it to draw sharply)", dims.map { !$0.hasPrefix("0x") && !$0.hasSuffix("x0") } ?? false, dims ?? "nil")
+        }
+        if let bg = store.tabs.first(where: { $0.isLoaded && $0.id != store.selectedID }), let wv = bg.webView {
+            let width = ((try? await wv.evaluateJavaScript("window.innerWidth")) as? NSNumber)?.intValue ?? -1
+            check("a tab loaded in the background sees a real viewport, not 0x0", width > 200, "innerWidth=\(width)")
+        }
         try? await Task.sleep(for: .seconds(1))
         check("still capped after restore", store.liveCount <= 3, "(live=\(store.liveCount))")
 

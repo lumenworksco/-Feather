@@ -1,0 +1,6 @@
+<!doctype html><title>dpr=?</title>
+<canvas id="c" width="10" height="10"></canvas>
+<script>
+function report() { document.title = "dpr=" + window.devicePixelRatio + " inner=" + window.innerWidth + "x" + window.innerHeight; }
+report(); setInterval(report, 400);
+</script>

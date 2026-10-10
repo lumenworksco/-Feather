@@ -97,6 +97,9 @@ final class TabStore: ObservableObject {
         config.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         // Tracks whether the user typed into a form field, so the lifecycle manager never unloads unsaved input.
         config.userContentController.addUserScript(WKUserScript(source: Self.dirtyTracker, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // WKWebView reports window.outerWidth/outerHeight as 0, where Safari reports the window size. Canvas-based apps
+        // (Google Sheets and Docs) use it to choose their drawing resolution and fall back to a blurry 1x canvas when it is 0.
+        config.userContentController.addUserScript(WKUserScript(source: Self.windowMetrics, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         configuration = config
 
         // The profile lock comes first: a second Feather on the same profile must not write anything to it.
@@ -172,7 +175,7 @@ final class TabStore: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func makeWebView() -> WKWebView { WKWebView(frame: .zero, configuration: configuration) }
+    func makeWebView() -> WKWebView { WKWebView(frame: WebViewMetrics.initialFrame, configuration: configuration) }
 
     // MARK: Tabs
 
@@ -186,7 +189,7 @@ final class TabStore: ObservableObject {
     }
 
     func openPopup(configuration: WKWebViewConfiguration, from opener: Tab, select: Bool = true) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = WKWebView(frame: WebViewMetrics.initialFrame, configuration: configuration)
         let tab = Tab(store: self)
         tab.attach(webView, restore: false)
         let pinnedCount = tabs.filter(\.isPinned).count
@@ -467,6 +470,18 @@ final class TabStore: ObservableObject {
         bookmarks.flush()
         Storage.drain()
     }
+
+    /// Only replaces the values when the engine reports 0 (so a future WebKit that reports them properly is left alone).
+    private static let windowMetrics = """
+    (function () {
+      function fix(name, fallback) {
+        if (window[name] !== 0) return;
+        try { Object.defineProperty(window, name, { get: fallback, set: function () {}, configurable: true }); } catch (e) {}
+      }
+      fix('outerWidth', function () { return window.innerWidth; });
+      fix('outerHeight', function () { return window.innerHeight; });
+    })();
+    """
 
     // Typed-into-a-field detection. Search boxes and non-text inputs are ignored; a submit resets the flag.
     private static let dirtyTracker = """
