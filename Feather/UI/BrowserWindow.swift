@@ -5,6 +5,7 @@ struct BrowserWindow: View {
     @ObservedObject private var settings: BrowserSettings
     @FocusState private var addressFocused: Bool
     @State private var launched = false
+    @State private var fullScreen = false
 
     init(store: TabStore) {
         self.store = store
@@ -38,58 +39,176 @@ struct BrowserWindow: View {
         .overlay(alignment: .bottomTrailing) {
             DownloadBadge(downloads: store.downloads).padding(18)
         }
+        .overlay(alignment: .top) {
+            // Over the whole window, not inside the sidebar: it must be visible with the sidebar hidden too.
+            ZStack {
+                if let banner = store.banner {
+                    PersistenceBannerView(banner: banner, store: store)
+                        .padding(.top, 46).padding(.horizontal, 24)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .motion(Theme.spring, value: store.banner)
+        }
         .opacity(launched ? 1 : 0)
         .scaleEffect(launched ? 1 : 0.985)
         .ignoresSafeArea()
         .tint(Brand.accent)
         .background(WindowConfigurator())
+        .environment(\.trafficLightInset, fullScreen ? 14 : 78)
+        .motion(Theme.spring, value: fullScreen)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
         .onChange(of: store.addressFocusRequest) { _, _ in AddressFocus.request() }
         .onAppear {
+            AddressFocus.installClickSelectsAll()
             if store.selected?.url == nil { AddressFocus.request() }
+            else {
+                // macOS hands the first text field initial focus; with a page open, keystrokes belong to the page
+                // (Space should scroll, typing should not replace the URL).
+                for delay in [0.05, 0.3] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        if AddressFocus.fieldHasFocus() { NSApp.windows.first { $0.title == "Feather" }?.makeFirstResponder(nil) }
+                    }
+                }
+            }
             if Theme.reduceMotion { launched = true } else { withAnimation(.easeOut(duration: 0.4)) { launched = true } }
         }
     }
 }
 
+/// "Your tabs were restored from a backup", "Feather couldn't save your tabs", and the like.
+private struct PersistenceBannerView: View {
+    let banner: PersistenceBanner
+    @ObservedObject var store: TabStore
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: banner.isWarning ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
+                .foregroundStyle(banner.isWarning ? Color.orange : Brand.accent).font(.system(size: 14)).padding(.top, 1)
+            Text(banner.message).font(.system(size: 12.5)).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            switch banner {
+            case .saveFailed, .lockedOut, .info: EmptyView()
+            default:
+                Button("Show Files") { NSWorkspace.shared.activateFileViewerSelecting([store.sessions.directory]) }
+                    .buttonStyle(.plain).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Brand.accent)
+            }
+            Button { store.dismissBanner() } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                .buttonStyle(PressStyle(scale: 0.88)).foregroundStyle(.secondary).padding(.top, 2)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: 560)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder((banner.isWarning ? Color.orange : Color.primary).opacity(banner.isWarning ? 0.45 : 0.10)))
+    }
+}
+
+private struct TrafficLightInsetKey: EnvironmentKey { static let defaultValue: CGFloat = 78 }
+extension EnvironmentValues {
+    /// Space the top row leaves for the window's traffic lights (they are hidden in full screen).
+    var trafficLightInset: CGFloat {
+        get { self[TrafficLightInsetKey.self] }
+        set { self[TrafficLightInsetKey.self] = newValue }
+    }
+}
+
 /// Puts keyboard focus in the address field and selects its text.
-/// SwiftUI's FocusState races with the field being rebuilt for each new tab (it's keyed by tab id), which made focus
-/// unreliable, so this finds the real NSTextField and retries until it actually is the first responder.
+/// The field lives for the whole window (it is not rebuilt per tab), so there is never a moment after ⌘T without a field
+/// to type into. This goes through AppKit rather than SwiftUI's FocusState, which proved unreliable here, and retries
+/// briefly in case the field is still being laid out (launch, sidebar/top-bar swap).
 @MainActor
 enum AddressFocus {
     /// SwiftUI does not propagate accessibilityIdentifier to the NSTextField, but it does set the placeholder.
     static let placeholder = "Search or enter address"
 
     private static var generation = 0
+    #if DEBUG
+    static var trace: [String] = []         // what each focus attempt saw (printed by the self-test when a focus check fails)
+    #endif
 
-    /// Keeps trying (up to ~2 s) until the *same* field instance has held focus for 150 ms. Right after a new tab the
-    /// lookup can still find the previous tab's field, which has focus but is about to be removed; counting that
-    /// as success would leave the new field unfocused.
     static func request() {
+        #if DEBUG
+        trace = []
+        #endif
         generation += 1
-        attempt(generation: generation, step: 0, candidate: nil, since: Date())
+        attempt(generation: generation, step: 0)
     }
 
-    private static func attempt(generation gen: Int, step: Int, candidate: NSTextField?, since: Date) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + (step == 0 ? 0 : 0.04)) {
-            guard gen == generation, step < 50 else { return }                 // a newer request supersedes this one
-            var candidate = candidate, since = since
+    /// True while the address field is the active text field (the user is editing it).
+    static func fieldHasFocus() -> Bool {
+        guard let window = NSApp.windows.first(where: { $0.title == "Feather" }), let field = find(in: window.contentView),
+              let editor = window.firstResponder as? NSTextView else { return false }
+        return editor.delegate === field
+    }
+
+    private static func attempt(generation gen: Int, step: Int) {
+        // The first attempt runs immediately (the field already exists), so focus is in place before the next keystroke.
+        let work = {
+            guard gen == generation, step < 60 else { return }                  // a newer request supersedes this one
+            #if DEBUG
+            if step < 4 || step % 20 == 0 {
+                let w = NSApp.windows.first(where: { $0.title == "Feather" })
+                trace.append("step \(step): window=\(w != nil) field=\(find(in: w?.contentView) != nil) responder=\(type(of: w?.firstResponder as Any)) keyWindow=\(w?.isKeyWindow ?? false)")
+            }
+            #endif
             if let window = NSApp.windows.first(where: { $0.title == "Feather" }) ?? NSApp.keyWindow,
                let field = find(in: window.contentView) {
-                if let editor = window.firstResponder as? NSTextView, editor.delegate === field {
-                    if candidate === field {
-                        if Date().timeIntervalSince(since) >= 0.15 {
-                            field.currentEditor()?.selectAll(nil)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { field.currentEditor()?.selectAll(nil) }
-                            return
-                        }
-                    } else { candidate = field; since = Date() }
-                } else {
-                    candidate = nil
-                    window.makeFirstResponder(field)
-                }
+                // Select-all happens only here, at the moment focus arrives; a later select-all could swallow letters you
+                // have already typed. (The field swaps in the full address itself, and selects it, when it gains focus.)
+                if let editor = window.firstResponder as? NSTextView, editor.delegate === field { editor.selectAll(nil); return }
+                window.makeFirstResponder(field)
+                if let editor = window.firstResponder as? NSTextView, editor.delegate === field { editor.selectAll(nil); return }
             }
-            attempt(generation: gen, step: step + 1, candidate: candidate, since: since)
+            attempt(generation: gen, step: step + 1)
         }
+        if step == 0 { work() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work) }
+    }
+
+    // MARK: Click selects everything (like Safari and Chrome)
+
+    private static var clickMonitor: Any?
+    private static var pendingClick: NSPoint?
+    private static var lastKeyTime = Date.distantPast
+
+    /// A click into the address field while it is NOT focused selects its whole text once the click has finished, so you
+    /// can click and type over the old address. A click while it is already focused places the caret as usual, and
+    /// a drag still selects just what you dragged over. (The select-all has to wait for the mouse-up: the click itself
+    /// places a caret after focus arrives, which would otherwise undo it.)
+    static func installClickSelectsAll() {
+        guard clickMonitor == nil else { return }
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .keyDown]) { event in
+            switch event.type {
+            case .keyDown:
+                lastKeyTime = Date()
+            case .leftMouseDown:
+                pendingClick = nil
+                if let window = event.window, window.title == "Feather", !fieldHasFocus(),
+                   let field = find(in: window.contentView), let hit = window.contentView?.hitTest(event.locationInWindow), contains(field, hit) {
+                    pendingClick = event.locationInWindow
+                }
+            case .leftMouseUp:
+                guard let down = pendingClick else { break }
+                pendingClick = nil
+                guard hypot(event.locationInWindow.x - down.x, event.locationInWindow.y - down.y) < 4 else { break }      // a drag: leave its selection alone
+                let clickTime = Date()
+                // Twice: right after the click, and again after SwiftUI has swapped the full address into the field.
+                for delay in [0.03, 0.16] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        if lastKeyTime < clickTime, fieldHasFocus(),
+                           let editor = NSApp.windows.first(where: { $0.title == "Feather" })?.firstResponder as? NSTextView { editor.selectAll(nil) }
+                    }
+                }
+            default: break
+            }
+            return event
+        }
+    }
+
+    private static func contains(_ field: NSView, _ view: NSView) -> Bool {
+        var v: NSView? = view
+        while let current = v { if current === field { return true }; v = current.superview }
+        return false
     }
 
     private static func find(in view: NSView?) -> NSTextField? {
@@ -142,84 +261,82 @@ struct NavControls: View {
     }
 }
 
+/// The address field: ONE view for the whole window. Its text lives in `store.address`, which the store updates
+/// synchronously when the tab changes.
 struct AddressBar: View {
     @ObservedObject var store: TabStore
+    @ObservedObject private var bookmarks: Bookmarks
+    @ObservedObject private var address: AddressModel
     var focused: FocusState<Bool>.Binding
 
-    var body: some View {
-        if let tab = store.selected {
-            // Swapping the field per tab must be instant: a cross-fade would leave the old field in the window for a
-            // moment, and focus would land on it instead of the new one.
-            Field(tab: tab, bookmarks: store.bookmarks, focused: focused).id(tab.id).transition(.identity)
+    init(store: TabStore, focused: FocusState<Bool>.Binding) {
+        self.store = store
+        self.focused = focused
+        _bookmarks = ObservedObject(wrappedValue: store.bookmarks)
+        _address = ObservedObject(wrappedValue: store.address)
+    }
+
+    /// Magnifier while typing / on a blank tab; a lock for HTTPS; an open lock for plain HTTP.
+    private var leadingSymbol: (name: String, tint: Color) {
+        if focused.wrappedValue || store.selectedURL == nil { return ("magnifyingglass", .secondary) }
+        switch store.selectedURL?.scheme {
+        case "https": return ("lock.fill", .secondary)
+        case "http": return ("lock.open.fill", .orange)
+        default: return ("doc", .secondary)
         }
     }
 
-    private struct Field: View {
-        @ObservedObject var tab: Tab
-        @ObservedObject var bookmarks: Bookmarks
-        var focused: FocusState<Bool>.Binding
-        @State private var text = ""
-
-        /// Magnifier while typing / on a blank tab; a lock for HTTPS; an open lock for plain HTTP.
-        private var leadingSymbol: (name: String, tint: Color) {
-            if focused.wrappedValue || tab.url == nil { return ("magnifyingglass", .secondary) }
-            switch tab.url?.scheme {
-            case "https": return ("lock.fill", .secondary)
-            case "http": return ("lock.open.fill", .orange)
-            default: return ("doc", .secondary)
+    var body: some View {
+        let isFocused = focused.wrappedValue
+        let symbol = leadingSymbol
+        HStack(spacing: 7) {
+            Image(systemName: symbol.name)
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(symbol.tint).frame(width: 14)
+                .contentTransition(.symbolEffect(.replace))
+            TextField(AddressFocus.placeholder, text: $address.text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused(focused)
+                .autocorrectionDisabled()
+                .onSubmit { store.selected?.go(to: address.text); focused.wrappedValue = false }
+                .onExitCommand {                       // Escape: forget what was typed and go back to the page
+                    address.text = AddressFormat.pretty(store.selectedURL)
+                    focused.wrappedValue = false
+                    DispatchQueue.main.async { store.selected?.focusContent() }           // after SwiftUI has resigned the field
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { store.selected?.focusContent() }
+                }
+            if let url = store.selectedURL {
+                let marked = bookmarks.contains(url)
+                Button { bookmarks.toggle(url: url, title: store.selected?.title ?? "") } label: {
+                    Image(systemName: marked ? "star.fill" : "star")
+                        .foregroundStyle(marked ? Color.yellow : Color.secondary)
+                        .font(.system(size: 12))
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.bounce, options: .nonRepeating, value: marked)
+                }
+                .buttonStyle(PressStyle(scale: 0.85)).help("Bookmark This Page")
+                .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }
         }
-
-        var body: some View {
-            let isFocused = focused.wrappedValue
-            let symbol = leadingSymbol
-            HStack(spacing: 7) {
-                Image(systemName: symbol.name)
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(symbol.tint).frame(width: 14)
-                    .contentTransition(.symbolEffect(.replace))
-                TextField(AddressFocus.placeholder, text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .focused(focused)
-                    .autocorrectionDisabled()
-                    .onSubmit { tab.go(to: text); focused.wrappedValue = false }
-                if let url = tab.url {
-                    let marked = bookmarks.contains(url)
-                    Button { bookmarks.toggle(url: url, title: tab.title) } label: {
-                        Image(systemName: marked ? "star.fill" : "star")
-                            .foregroundStyle(marked ? Color.yellow : Color.secondary)
-                            .font(.system(size: 12))
-                            .contentTransition(.symbolEffect(.replace))
-                            .symbolEffect(.bounce, options: .nonRepeating, value: marked)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(isFocused ? 0.11 : 0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Brand.accent.opacity(isFocused ? 0.85 : 0), lineWidth: 1.5))
+        .shadow(color: Brand.accent.opacity(isFocused ? 0.28 : 0), radius: 7)
+        .motion(Theme.fade, value: isFocused)
+        .motion(Theme.quick, value: store.selectedURL == nil)
+        .onChange(of: focused.wrappedValue) { _, nowFocused in
+            if nowFocused {
+                // Show the full address for editing and select it, but only if the text is still the untouched display
+                // text: anything already typed (fast typing right after the shortcut) must survive, unselected.
+                if address.text == AddressFormat.pretty(store.selectedURL) {
+                    address.text = store.selectedURL?.absoluteString ?? ""
+                    DispatchQueue.main.async {
+                        if address.text == store.selectedURL?.absoluteString ?? "" { (NSApp.keyWindow?.firstResponder as? NSText)?.selectAll(nil) }
                     }
-                    .buttonStyle(PressStyle(scale: 0.85)).help("Bookmark This Page")
-                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 }
+            } else {
+                address.text = AddressFormat.pretty(store.selectedURL)
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(isFocused ? 0.11 : 0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Brand.accent.opacity(isFocused ? 0.85 : 0), lineWidth: 1.5))
-            .shadow(color: Brand.accent.opacity(isFocused ? 0.28 : 0), radius: 7)
-            .motion(Theme.fade, value: isFocused)
-            .motion(Theme.quick, value: tab.url == nil)
-            .onAppear { text = Self.pretty(tab.url) }
-            .onChange(of: tab.url) { _, new in if !focused.wrappedValue { text = Self.pretty(new) } }
-            .onChange(of: focused.wrappedValue) { _, isFocused in
-                if isFocused {
-                    text = tab.url?.absoluteString ?? ""
-                    DispatchQueue.main.async { (NSApp.keyWindow?.firstResponder as? NSText)?.selectAll(nil) }
-                } else {
-                    text = Self.pretty(tab.url)
-                }
-            }
-        }
-
-        /// Unfocused display: drop "https://" and a bare trailing slash.
-        static func pretty(_ url: URL?) -> String {
-            guard var s = url?.absoluteString else { return "" }
-            if s.hasPrefix("https://") { s.removeFirst(8) }
-            if s.hasSuffix("/"), s.filter({ $0 == "/" }).count == 1 { s.removeLast() }
-            return s
         }
     }
 }

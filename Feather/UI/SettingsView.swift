@@ -30,7 +30,7 @@ struct SettingsView: View {
             .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 4)
             form
         }
-        .frame(width: 480, height: 640)
+        .frame(width: 480, height: 720)
         .tint(Brand.accent)
     }
 
@@ -50,7 +50,7 @@ struct SettingsView: View {
                     HStack { Text(host); Spacer(); Button("Remove") { settings.removeExcluded(host) }.buttonStyle(.borderless) }
                 }
                 HStack {
-                    TextField("example.com", text: $newHost).onSubmit(addHost)
+                    TextField("Site", text: $newHost, prompt: Text("Add a site, e.g. example.com")).labelsHidden().onSubmit(addHost)
                     Button("Add", action: addHost).disabled(newHost.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }

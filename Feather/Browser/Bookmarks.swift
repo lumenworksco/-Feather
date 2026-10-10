@@ -32,5 +32,5 @@ final class Bookmarks: ObservableObject {
         flush()
     }
 
-    func flush() { Storage.save(items, as: "bookmarks.json") }
+    func flush() { Storage.save(items, as: "bookmarks.json", durability: .full, keepPrevious: true) }
 }

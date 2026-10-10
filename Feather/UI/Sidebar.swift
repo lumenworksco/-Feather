@@ -32,6 +32,7 @@ struct Sidebar: View {
     @ObservedObject var store: TabStore
     var focused: FocusState<Bool>.Binding
     @Namespace private var selection
+    @Environment(\.trafficLightInset) private var trafficInset
 
     var body: some View {
         VStack(spacing: 10) {
@@ -40,7 +41,7 @@ struct Sidebar: View {
                 Spacer(minLength: 0)
                 NavControls(store: store)
             }
-            .padding(.leading, 78)                       // room for the window's traffic lights
+            .padding(.leading, trafficInset)             // room for the window's traffic lights
             .frame(height: 28)
 
             AddressBar(store: store, focused: focused)
@@ -74,7 +75,7 @@ struct Sidebar: View {
         }
         .motion(Theme.spring, value: store.selectedID)          // lets the selection pill glide between rows
         .padding(.horizontal, 10)
-        .padding(.top, 8)
+        .padding(.top, 2)                               // puts the nav row on the traffic lights' centre line
         .padding(.bottom, 10)
     }
 }
@@ -83,6 +84,7 @@ struct Sidebar: View {
 struct TopBar: View {
     @ObservedObject var store: TabStore
     var focused: FocusState<Bool>.Binding
+    @Environment(\.trafficLightInset) private var trafficInset
 
     var body: some View {
         HStack(spacing: 8) {
@@ -95,8 +97,8 @@ struct TopBar: View {
             SettingsLink { Image(systemName: "gearshape").frame(width: 26, height: 26).hoverFill(radius: 7, strength: 0.10) }
                 .buttonStyle(PressStyle()).foregroundStyle(.secondary).help("Settings")
         }
-        .padding(.leading, 78).padding(.trailing, 12)
-        .frame(height: 40)
+        .padding(.leading, trafficInset).padding(.trailing, 12)
+        .frame(height: 32)
     }
 }
 
@@ -175,7 +177,8 @@ private struct TabRow: View {
                     .lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, 10)
+            .padding(.trailing, selected || hovering ? 32 : 10)         // leave room for the close button so the title never runs under it
             .frame(height: 32)
             .background {
                 ZStack {
@@ -263,15 +266,23 @@ private struct PinnedGrid: View {
                 .motion(Theme.quick, value: dropTargeted)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
-                ForEach(Array(stride(from: 0, to: pinned.count, by: 4)), id: \.self) { start in
-                    HStack(spacing: 6) {
-                        ForEach(pinned[start..<min(start + 4, pinned.count)]) { tab in
-                            PinnedTile(tab: tab, store: store, selected: tab.id == store.selectedID, selection: selection)
-                                .transition(.scale(scale: 0.5).combined(with: .opacity))
+                // Four equal columns that share the full sidebar width (so margins match the address field on both sides);
+                // a partial last row is padded with empty cells so its tiles keep the same width.
+                Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                    ForEach(Array(stride(from: 0, to: pinned.count, by: 4)), id: \.self) { start in
+                        GridRow {
+                            ForEach(0..<4, id: \.self) { column in
+                                if start + column < pinned.count {
+                                    PinnedTile(tab: pinned[start + column], store: store, selected: pinned[start + column].id == store.selectedID, selection: selection)
+                                        .transition(.scale(scale: 0.5).combined(with: .opacity))
+                                } else {
+                                    Color.clear.frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                                }
+                            }
                         }
-                        Spacer(minLength: 0)
                     }
                 }
+                .frame(maxWidth: .infinity)
             }
             Divider().opacity(0.5).padding(.top, 2)
         }
@@ -304,7 +315,7 @@ private struct PinnedTile: View {
                         .font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 48, height: 40)
+            .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
             .overlay(alignment: .topTrailing) {
                 if tab.isLoading && tab.isLoaded { ProgressView().controlSize(.mini).scaleEffect(0.7).padding(3).transition(.opacity) }
             }

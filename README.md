@@ -11,12 +11,23 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 - **Sidebar tabs**, with **pinned tabs** as an icon grid at the top. Drag to reorder, drag onto the pin area to pin, drag back to unpin. Hide the sidebar with ⌘S for a compact top bar.
 - **One address bar** for URLs and Google searches. It takes focus on every new tab.
 - **Memory-conscious by design.** Blank and restored tabs have no web view at all; pages in tabs you haven't visited are unloaded according to a setting (Balanced / Memory Saver / Aggressive). A tab is never unloaded while it is loading, playing media, using the camera or microphone, on an excluded site, or has text typed into a form.
-- **Crash-safe sessions.** Your tabs, pins, selection, and each tab's back/forward history and scroll position are saved within about 0.6 s of any change and restored after a quit, crash or `kill -9`. Only the selected tab loads at launch. If WebKit's page process dies, the tab reloads itself.
+- **Crash-safe sessions.** Your tabs, pins, selection, and each tab's back/forward history and scroll position are saved within about a quarter of a second of any change and restored after a quit, crash or `kill -9`, with backups and safeguards against a damaged session file (see [Keeping your tabs safe](#keeping-your-tabs-safe)). Only the selected tab loads at launch. If WebKit's page process dies, the tab reloads itself.
 - Bookmarks, local history, downloads, find in page, per-site zoom, printing, camera/microphone/location prompts, file upload, JavaScript dialogs, local HTML files.
 - **Default-browser support**: opens links from other apps.
 - A start page with your bookmarks and recent sites, a lavender brand palette, and animations that only run in response to what you do (all disabled by macOS *Reduce motion*).
 
 ![The start page](docs/screenshots/start.png)
+
+## Keeping your tabs safe
+Your open tabs, pins, selection, each tab's back/forward list and scroll position, and the recently-closed list are saved within about a quarter of a second of any change, and whenever you leave the app, sleep the Mac, or quit.
+
+- **Writes are durable.** Each save goes to a temporary file, is forced to disk, read back and compared, and only then renamed into place. The previous save is kept as `session.prev.json`.
+- **Nothing unreadable is ever overwritten.** If the session file is damaged, Feather restores the previous save, then the newest backup, and first copies every damaged file into `SessionQuarantine/`. One damaged tab entry costs only that tab.
+- **Rolling backups** live in `SessionBackups/`: every 10 minutes while things change, at launch, at quit, and *before* a sudden drop in the number of tabs, so a mistaken mass-close can be undone. **History > Restore Previous Session** opens a backup's tabs alongside the ones you have (nothing is replaced).
+- **You are told** when something went wrong (a restore from backup, a damaged file, a save that failed and is being retried) in a banner over the window.
+- **One Feather per profile.** A second copy opening the same profile can't write to it.
+
+**Limits:** changes in the last fraction of a second before a crash, text typed into web forms, and a page's JavaScript state are not saved. Tested by killing the app (`kill -9`), quitting, damaging the files in every way listed in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), and loading a copy of a real session. **Not tested:** a power cut or Mac restart in the middle of a save, which needs a real restart.
 
 ## What's not there yet
 

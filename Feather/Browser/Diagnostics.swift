@@ -30,6 +30,119 @@ enum SelfTest {
             print("[selftest] File menu: \(file.items.map { "\($0.title)[\($0.keyEquivalent)]" })")
         }
 
+        // --- Persistence layer: pure logic against temporary folders.
+        do {
+            let fm = FileManager.default
+            let tmp = fm.temporaryDirectory.appendingPathComponent("FeatherPersist-\(UUID().uuidString)", isDirectory: true)
+            try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+            defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp.appendingPathComponent("ro").path); try? fm.removeItem(at: tmp) }
+
+            // The format real users already have on disk (no version field) must keep loading.
+            let legacy = #"{"tabs":[{"url":"https://a.com/","title":"A","state":"AAEC","pinned":true},{"url":null,"title":""},{"url":"https://b.com/","title":"B"}],"selected":2,"closed":[{"url":"https://c.com/","title":"C"}]}"#
+            let p1 = SessionParser.parse(Data(legacy.utf8))
+            check("an existing session file (no version field) still loads in full",
+                  p1?.session.tabs.count == 3 && p1?.version == 1 && p1?.isPartial == false && p1?.session.tabs[0].pinned == true
+                  && p1?.session.tabs[0].state == Data([0, 1, 2]) && p1?.session.selected == 2 && p1?.session.closed?.count == 1)
+            let broken = #"{"version":2,"tabs":[{"url":12345,"title":"x"},{"url":"https://ok.com/","title":7,"state":"!!!","pinned":"yes"},"junk",{"url":"https://two.com/","title":"Two"}],"selected":9}"#
+            let p2 = SessionParser.parse(Data(broken.utf8))
+            check("damaged entries cost only themselves: 2 good tabs kept, 2 bad dropped, bad state/title dropped without losing the tab",
+                  p2?.session.tabs.map { $0.url?.host } == ["ok.com", "two.com"] && p2?.droppedTabs == 2 && p2?.droppedFields == 2 && p2?.session.selected == 1,
+                  "\(String(describing: p2?.session.tabs.map { $0.url?.host })) dropped=\(p2?.droppedTabs ?? -1)/\(p2?.droppedFields ?? -1)")
+            check("files that are not sessions are rejected (garbage, wrong schema, empty list, empty file)",
+                  SessionParser.parse(Data("garbage".utf8)) == nil && SessionParser.parse(Data(#"{"a":1}"#.utf8)) == nil
+                  && SessionParser.parse(Data(#"{"tabs":[]}"#.utf8)) == nil && SessionParser.parse(Data()) == nil)
+
+            // Backup retention.
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            func entry(_ minutesAgo: Double, _ tabs: Int) -> BackupEntry {
+                BackupEntry(url: URL(fileURLWithPath: "/b/\(Int(minutesAgo))-\(tabs)"), date: now.addingTimeInterval(-minutesAgo * 60), tabs: tabs, pinned: 0)
+            }
+            var list = (0..<20).map { entry(Double($0) * 10, 5) }                       // every 10 min for 3 h 10 min
+            list += [entry(26 * 60, 3), entry(26 * 60 + 30, 12), entry(27 * 60, 4), entry(15 * 24 * 60, 9)]
+            let expired = BackupRetention.expired(list, now: now)
+            check("retention: keeps the last 2 h, one per hour for a day, the fullest per day, drops the rest (8 of 24 expire)",
+                  expired.count == 8 && !expired.contains { $0.tabs == 12 } && expired.contains { $0.tabs == 9 }
+                  && list.prefix(3).allSatisfy { e in !expired.contains(e) }, "expired \(expired.count)")
+            check("a sharp drop in tab count is recognised (and ordinary closing is not)",
+                  SessionStore.shrinks(from: 9, to: 6) && SessionStore.shrinks(from: 4, to: 2) && !SessionStore.shrinks(from: 9, to: 8) && !SessionStore.shrinks(from: 3, to: 2))
+            check("backup file names round-trip",
+                  BackupEntry(url: URL(fileURLWithPath: "/x/" + BackupEntry.fileName(date: now, tabs: 12, pinned: 5)))
+                    .map { $0.tabs == 12 && $0.pinned == 5 && abs($0.date.timeIntervalSince(now)) < 1 } == true)
+
+            // Durable writes.
+            let file = tmp.appendingPathComponent("a.json")
+            try? DurableFile.write(Data("one".utf8), to: file, full: true)
+            try? DurableFile.write(Data("two".utf8), to: file, full: true)
+            check("durable write replaces the file and leaves no temporary file behind",
+                  (try? Data(contentsOf: file)) == Data("two".utf8) && !fm.fileExists(atPath: tmp.appendingPathComponent(".a.json.tmp").path))
+            let ro = tmp.appendingPathComponent("ro", isDirectory: true)
+            try? fm.createDirectory(at: ro, withIntermediateDirectories: true)
+            try? fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: ro.path)
+            var threw = false
+            do { try DurableFile.write(Data("x".utf8), to: ro.appendingPathComponent("x.json"), full: true) } catch { threw = true }
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ro.path)
+            check("a write into a folder that can't be written reports a failure instead of pretending", threw)
+
+            // The whole chain: save twice -> corrupt -> fall back -> quarantine keeps the damaged bytes.
+            func tab(_ s: String, pinned: Bool = false) -> SessionTab { SessionTab(url: URL(string: s), title: s, state: nil, pinned: pinned ? true : nil) }
+            let dir = tmp.appendingPathComponent("store", isDirectory: true)
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let s1 = SessionStore(directory: dir)
+            if case .fresh = s1.load() { check("a brand-new profile loads as fresh (no false alarm)", true) } else { check("a brand-new profile loads as fresh (no false alarm)", false) }
+            let one = Session(tabs: [tab("https://a.com/")], selected: 0, closed: nil)
+            let two = Session(tabs: [tab("https://a.com/"), tab("https://b.com/", pinned: true)], selected: 1, closed: nil)
+            s1.commitSync(one); s1.commitSync(two)
+            let primary = dir.appendingPathComponent("session.json"), prev = dir.appendingPathComponent("session.prev.json")
+            let mtime = (try? fm.attributesOfItem(atPath: primary.path)[.modificationDate]) as? Date
+            s1.commitSync(two)
+            check("saving an unchanged session writes nothing",
+                  ((try? fm.attributesOfItem(atPath: primary.path)[.modificationDate]) as? Date) == mtime)
+            check("after two saves: primary is the newest, prev is the one before",
+                  SessionParser.parse((try? Data(contentsOf: primary)) ?? Data())?.session.tabs.count == 2
+                  && SessionParser.parse((try? Data(contentsOf: prev)) ?? Data())?.session.tabs.count == 1)
+            let garbage = Data("{{ not json at all".utf8)
+            try? garbage.write(to: primary)
+            let s2 = SessionStore(directory: dir)
+            if case .loaded(let session, let source, _, let quarantined, _) = s2.load() {
+                let kept = ((try? fm.contentsOfDirectory(at: s2.quarantineDirectory, includingPropertiesForKeys: nil)) ?? []).compactMap { try? Data(contentsOf: $0) }
+                check("damaged primary: restores the previous save, and keeps the damaged bytes in quarantine",
+                      source == .previous && session.tabs.count == 1 && quarantined == 1 && kept.contains(garbage), "source=\(source) q=\(quarantined)")
+            } else { check("damaged primary: restores the previous save, and keeps the damaged bytes in quarantine", false) }
+            try? fm.removeItem(at: primary)
+            let s3 = SessionStore(directory: dir)
+            if case .loaded(_, let source, _, _, _) = s3.load() { check("primary missing (not a first run): falls back instead of starting empty", source == .previous, "\(source)") }
+            else { check("primary missing (not a first run): falls back instead of starting empty", false) }
+            try? garbage.write(to: primary); try? garbage.write(to: prev)
+            let s4 = SessionStore(directory: dir)
+            if case .loaded(_, let source, _, _, _) = s4.load(), case .backup = source { check("primary and previous both damaged: restores from a backup", true) }
+            else { check("primary and previous both damaged: restores from a backup", false) }
+            for b in s4.listBackups() { try? garbage.write(to: b.url) }
+            let s5 = SessionStore(directory: dir)
+            if case .unreadable = s5.load() {
+                check("everything damaged: starts empty but destroys nothing (damaged copies kept)",
+                      ((try? fm.contentsOfDirectory(atPath: s5.quarantineDirectory.path)) ?? []).count >= 2 && fm.fileExists(atPath: primary.path))
+            } else { check("everything damaged: starts empty but destroys nothing (damaged copies kept)", false) }
+
+            // Drop guard: closing most tabs at once leaves a snapshot of the session just before.
+            let dir2 = tmp.appendingPathComponent("drop", isDirectory: true)
+            try? fm.createDirectory(at: dir2, withIntermediateDirectories: true)
+            let d = SessionStore(directory: dir2); d.snapshotInterval = 100_000
+            _ = d.load()
+            let nine = Session(tabs: (0..<9).map { tab("https://t\($0).com/") }, selected: 0, closed: nil)
+            d.commitSync(Session(tabs: [tab("https://t0.com/")], selected: 0, closed: nil))      // first save (also the first snapshot)
+            d.commitSync(nine)
+            d.commitSync(Session(tabs: [tab("https://t0.com/")], selected: 0, closed: nil))      // 9 -> 1
+            check("closing most tabs at once keeps a snapshot of the 9-tab session", d.listBackups().contains { $0.tabs == 9 }, "\(d.listBackups().map(\.tabs))")
+            // Closing one after another loses only a couple of tabs per save: still caught, because the comparison is
+            // against the fullest session of the last two minutes.
+            let dir3 = tmp.appendingPathComponent("gradual", isDirectory: true)
+            try? fm.createDirectory(at: dir3, withIntermediateDirectories: true)
+            let g = SessionStore(directory: dir3); g.snapshotInterval = 100_000
+            _ = g.load()
+            for count in [1, 9, 7, 5, 3] { g.commitSync(Session(tabs: (0..<count).map { tab("https://g\($0).com/") }, selected: 0, closed: nil)) }
+            check("closing 9 tabs down to 3 in steps of 2 still keeps a 9-tab backup", g.listBackups().contains { $0.tabs == 9 }, "\(g.listBackups().map(\.tabs))")
+        }
+
         // --- New-tab focus: the address field must be the first responder, with its text selected.
         func pause(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
         func addressFocus() -> (focused: Bool, selectedAll: Bool, detail: String) {
@@ -69,10 +182,22 @@ enum SelfTest {
         let t5 = store.newTab(); ft = await focusTime()
         check("new tab takes focus even when the web page had it", ft.ok, "(\(ft.ms) ms) \(ft.detail)")
         store.close(t5.id); store.select(t3.id); await pause(0.4)
-        store.settings.sidebarVisible = false; await pause(0.5)
+        Theme.animate { store.settings.sidebarVisible = false }; await pause(1.0)    // animated, like the button and Cmd+S
+        var responderLog: [String] = []
+        let win = NSApp.windows.first { $0.title == "Feather" }
+        let t0r = CFAbsoluteTimeGetCurrent()
+        let responderObs = win?.observe(\.firstResponder, options: [.new]) { w, _ in
+            let r = w.firstResponder
+            responderLog.append("+\(Int((CFAbsoluteTimeGetCurrent() - t0r) * 1000)) ms -> \(type(of: r as Any)) \(((r as? NSTextView)?.delegate as? NSTextField)?.placeholderString ?? "")")
+        }
         let t4 = store.newTab(); ft = await focusTime()
+        responderObs?.invalidate()
         check("focused after new tab with the sidebar hidden (top bar)", ft.ok, "(\(ft.ms) ms) \(ft.detail)")
-        store.settings.sidebarVisible = true
+        if !ft.ok {
+            for line in AddressFocus.trace { print("[selftest]    focus trace: \(line)") }
+            for line in responderLog { print("[selftest]    responder: \(line)") }
+        }
+        Theme.animate { store.settings.sidebarVisible = true }; await pause(0.8)
         for t in [t4, t3, t2] { store.close(t.id) }
         store.select(home.id); await pause(0.5)
 

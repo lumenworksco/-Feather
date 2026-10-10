@@ -49,18 +49,27 @@ def frame(e):
 def find(text, roles=("AXStaticText", "AXImage", "AXGroup", "AXButton"), maxd=16, frame_out=False):
     """Center of the first sidebar element whose title/description/help contains `text` (sidebar only: x < 400)."""
     hit = []
-    def walk(e, d):
+    def walk(e, d, wx):
         if hit: return
         label = " ".join(str(attr(e, n)) for n in ("AXTitle", "AXValue", "AXDescription", "AXHelp") if attr(e, n))
         f = frame(e)
-        if attr(e, "AXRole") in roles and text in label and f and f[0] < 400 and f[2] > 4:
+        # sidebar = the leftmost 330 pt *of the window* (the window opens wherever macOS last placed it)
+        if attr(e, "AXRole") in roles and text in label and f and wx <= f[0] < wx + 330 and f[2] > 4:
             hit.append(f if frame_out else (f[0] + f[2] / 2, f[1] + f[3] / 2)); return
         if d < maxd:
-            for c in (attr(e, "AXChildren") or []): walk(c, d + 1)
-    for w in attr(app, "AXWindows") or []: walk(w, 0)
+            for c in (attr(e, "AXChildren") or []): walk(c, d + 1, wx)
+    for w in attr(app, "AXWindows") or []: walk(w, 0, frame(w)[0] if frame(w) else 0)
     return hit[0] if hit else None
 
+def frontmost_pid():
+    out = subprocess.run(["osascript", "-e", 'tell application "System Events" to get unix id of first process whose frontmost is true'], capture_output=True, text=True).stdout.strip()
+    return int(out) if out.isdigit() else None
+
 def post(kind, x, y):
+    # Mouse presses go to whatever is under the cursor/in front: never send one unless the test copy is frontmost.
+    if kind != Quartz.kCGEventMouseMoved and frontmost_pid() != pid:
+        subprocess.run(["pkill", "-f", "Debug/Feather.app"])
+        raise SystemExit(f"ABORT: the test copy (pid {pid}) is not the frontmost app; refusing to send input.")
     ev = Quartz.CGEventCreateMouseEvent(None, kind, (x, y), Quartz.kCGMouseButtonLeft)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
 
@@ -109,7 +118,10 @@ if src and zone:
 # C. second pin by dragging onto the pinned tiles (container) + unpin by dragging a tile onto the list
 # The accessibility element named "Apple" is the whole pinned grid (220 pt wide); its first tile is 48x40 at the left edge.
 grid = find("Apple", frame_out=True)
-tile = (grid[0] + 24, grid[1] + 20) if grid else None
+# Tiles are four equal flexible columns now: take the first tile's own width (found as a 40 pt-high button) when we got it,
+# otherwise derive it from the 220 pt grid ((220 - 3 gaps of 6) / 4).
+tw = grid[2] if grid and grid[2] < 100 else (220 - 18) / 4
+tile = (grid[0] + tw / 2, grid[1] + 20) if grid else None
 row = find("Welcome to Python.org")
 if os.environ.get("DRAG_DEBUG"):
     print("   debug: tile at", tile, " row at", row)
@@ -140,10 +152,12 @@ if py and zone:
     grid = find("Python", frame_out=True)
     hn = find("Hacker News")
     if grid and hn:
-        drag(hn, (grid[0] + 24, grid[1] + 20))
+        tw = grid[2] if grid[2] < 100 else (220 - 18) / 4
+        drag(hn, (grid[0] + tw / 2, grid[1] + 20))
         t = tabs(); check("dropping a row on a pinned tile pins it before that tile", names(t)[:2] == ["*hn", "*python"], names(t))
         grid = find("Hacker News", frame_out=True) or grid
-        drag((grid[0] + 24 + 54, grid[1] + 20), (grid[0] + 24, grid[1] + 20))
+        tw = grid[2] if grid[2] < 100 else (220 - 18) / 4
+        drag((grid[0] + tw * 1.5 + 6, grid[1] + 20), (grid[0] + tw / 2, grid[1] + 20))
         t = tabs(); check("dragging one pinned tile onto another reorders the pinned tabs", names(t)[:2] == ["*python", "*hn"], names(t))
     else:
         check("found the pinned grid and the Hacker News row", False, (grid, hn))

@@ -1,25 +1,79 @@
 import SwiftUI
 import WebKit
 
-/// Everything needed to put the user's tabs back after a quit or crash. `state` is WKWebView.interactionState
-/// (back/forward list + scroll position). Text typed into web forms and a page's JavaScript state are NOT saved.
-private struct SessionTab: Codable { var url: URL?; var title: String; var state: Data?; var pinned: Bool? }
-private struct SavedClosed: Codable { var url: URL; var title: String; var pinned: Bool? }
-private struct Session: Codable { var tabs: [SessionTab]; var selected: Int; var closed: [SavedClosed]? }
+/// A message about the safety of the user's data. It is shown over the window (in either layout) until it is
+/// dismissed or the problem goes away.
+enum PersistenceBanner: Equatable {
+    case saveFailed(String)
+    case restoredFromBackup(String)
+    case partialRestore
+    case unreadable
+    case lockedOut
+    case info(String)
+
+    var kind: String {
+        switch self {
+        case .saveFailed: return "saveFailed"
+        case .restoredFromBackup: return "restoredFromBackup"
+        case .partialRestore: return "partialRestore"
+        case .unreadable: return "unreadable"
+        case .lockedOut: return "lockedOut"
+        case .info: return "info"
+        }
+    }
+    var message: String {
+        switch self {
+        case .saveFailed(let why): return "Feather couldn’t save your tabs (\(why)). It keeps trying, and your open tabs are unaffected."
+        case .restoredFromBackup(let text): return text
+        case .partialRestore: return "Some tabs in your saved session were damaged and couldn’t be restored. A copy of the file was kept."
+        case .unreadable: return "Your saved tabs couldn’t be read. Nothing was deleted: the damaged files were kept."
+        case .lockedOut: return "Feather is already open with this profile, so changes made here won’t be saved."
+        case .info(let text): return text
+        }
+    }
+    var isWarning: Bool {
+        switch self { case .saveFailed, .partialRestore, .unreadable, .lockedOut: return true; case .restoredFromBackup, .info: return false }
+    }
+}
+
+/// Text shown in the address field. Its own small object (not part of TabStore) so a keystroke re-renders only the
+/// address field, not every view that watches the store.
+@MainActor
+final class AddressModel: ObservableObject {
+    @Published var text = ""
+}
+
+/// How a URL is displayed in the address field when it is not being edited.
+enum AddressFormat {
+    /// Drops "https://" and a bare trailing slash.
+    static func pretty(_ url: URL?) -> String {
+        guard var s = url?.absoluteString else { return "" }
+        if s.hasPrefix("https://") { s.removeFirst(8) }
+        if s.hasSuffix("/"), s.filter({ $0 == "/" }).count == 1 { s.removeLast() }
+        return s
+    }
+}
 
 /// Owns the tab list and selection, the shared WebKit configuration, and the app's local data.
 @MainActor
 final class TabStore: ObservableObject {
     @Published private(set) var tabs: [Tab] = []
     @Published private(set) var selectedID: Tab.ID?
+    /// The selected tab's URL, published here so the single, long-lived address field can follow it without being rebuilt per tab.
+    @Published private(set) var selectedURL: URL?
     @Published private(set) var lastRestoreMilliseconds: Int?
     @Published private(set) var addressFocusRequest = 0
+    @Published var banner: PersistenceBanner? {
+        didSet { if Self.bench { print(banner.map { "BANNER \($0.kind) \($0.message)" } ?? "BANNER cleared"); fflush(stdout) } }
+    }
+    @Published private(set) var backups: [BackupEntry] = []
 
     let settings = BrowserSettings()
     let history = History()
     let bookmarks = Bookmarks()
     let favicons = Favicons()
     let downloads = Downloads()
+    let address = AddressModel()
     private(set) lazy var lifecycle = LifecycleManager(store: self)
 
     /// False until the app has finished launching. Creating WKWebViews inside SwiftUI's @StateObject init
@@ -27,7 +81,11 @@ final class TabStore: ObservableObject {
     private(set) var isReady = false
     private let configuration: WKWebViewConfiguration
     private var closedTabs: [ClosedTab] = []
-    private var sessionTask: Task<Void, Never>?
+    let sessions: SessionStore
+    private var saveTask: Task<Void, Never>?
+    private var saveDeadline = Date.distantFuture
+    private var retryTask: Task<Void, Never>?
+    private var retryDelay: TimeInterval = 3
 
     var selected: Tab? { tabs.first { $0.id == selectedID } }
     var liveCount: Int { tabs.filter(\.isLoaded).count }
@@ -40,6 +98,17 @@ final class TabStore: ObservableObject {
         // Tracks whether the user typed into a form field, so the lifecycle manager never unloads unsaved input.
         config.userContentController.addUserScript(WKUserScript(source: Self.dirtyTracker, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         configuration = config
+
+        // The profile lock comes first: a second Feather on the same profile must not write anything to it.
+        sessions = SessionStore(directory: Storage.directory)
+        if !Storage.acquireProfileLock() {
+            Storage.readOnly = true
+            sessions.enabled = false
+            banner = .lockedOut
+        }
+        // `--snapshot-interval=SECONDS` shortens the backup interval (tests).
+        if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--snapshot-interval=") }), let v = Double(arg.dropFirst(20)) { sessions.snapshotInterval = v }
+        sessions.onEvent = { [weak self] event in MainActor.assumeIsolated { self?.handle(event) } }
 
         // `--open=URL` (repeatable). A bare URL argument would make AppKit treat the launch as "open a document" and SwiftUI would skip creating the window.
         let launchURLs = CommandLine.arguments.filter { $0.hasPrefix("--open=") }.compactMap { URL(string: String($0.dropFirst(7))) }
@@ -67,7 +136,15 @@ final class TabStore: ObservableObject {
         }
         // Also save whenever the user leaves the app, so a crash while it's in the background loses nothing.
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveSession() }
+            MainActor.assumeIsolated { self?.saveSessionNow(refreshStates: true) }
+        }
+        // Sleep, shutdown/restart and fast user switching are announced on the *workspace* notification center
+        // (not NotificationCenter.default; subscribing there silently receives nothing). Flush synchronously, like at quit.
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.willPowerOffNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.flushAll() }
+            }
         }
     }
 
@@ -104,7 +181,7 @@ final class TabStore: ObservableObject {
         let tab = Tab(url: url, store: self)
         tabs.append(tab)
         if select { self.select(tab.id) } else { tabsChanged() }
-        if url == nil { addressFocusRequest += 1 }
+        if url == nil { focusAddress() }
         return tab
     }
 
@@ -122,6 +199,9 @@ final class TabStore: ObservableObject {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         selected?.lastActive = Date()
         selectedID = id
+        selectedURL = tab.url
+        // Updated here, synchronously, not from a view's onChange: anything typed after this point must never be overwritten.
+        address.text = AddressFormat.pretty(tab.url)
         tab.lastActive = Date()
         tab.ensureLoaded()
         lifecycle.enforce()
@@ -187,26 +267,46 @@ final class TabStore: ObservableObject {
         tabsChanged()
     }
 
+    func tabURLChanged(_ tab: Tab) {
+        guard tab.id == selectedID else { return }
+        selectedURL = tab.url
+        if !AddressFocus.fieldHasFocus() { address.text = AddressFormat.pretty(tab.url) }     // never clobber what is being typed
+    }
+
     func tab(withID id: UUID) -> Tab? { tabs.first { $0.id == id } }
 
-    func focusAddress() { addressFocusRequest += 1 }
+    func focusAddress() {
+        addressFocusRequest += 1
+        AddressFocus.request()          // immediately, not after the next render, so keystrokes right after the shortcut land in the field
+    }
 
     // MARK: Bookkeeping
 
     /// Tab list/selection/load state changed: refresh the UI and schedule a session save.
     func tabsChanged() {
         objectWillChange.send()
-        sessionChanged()
+        sessionChanged(.structural)
     }
 
-    /// Schedules a save ~0.6 s from the *first* change (not restarted by later ones), so a page that keeps changing
-    /// its title or URL can't postpone saving forever, and a crash loses at most the last fraction of a second.
-    func sessionChanged() {
-        guard sessionTask == nil else { return }
-        sessionTask = Task {
-            try? await Task.sleep(for: .milliseconds(600))
-            sessionTask = nil
-            saveSession()
+    enum SaveUrgency { case structural, incidental }
+
+    /// Schedules a save. Opening, closing, pinning, moving or selecting a tab is saved within ~0.25 s; incidental
+    /// changes (a page's address changing by itself) within ~1 s. Changes arriving while a save is pending don't
+    /// postpone it, so a page that keeps changing can't starve saving, and the final state always lands because the
+    /// session is read when the timer fires, not when it was scheduled.
+    func sessionChanged(_ urgency: SaveUrgency = .incidental) {
+        let delay: TimeInterval = urgency == .structural ? 0.25 : 1.0
+        let deadline = Date().addingTimeInterval(delay)
+        if saveTask != nil, saveDeadline <= deadline { return }
+        saveTask?.cancel()
+        saveDeadline = deadline
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            guard let self else { return }
+            self.saveTask = nil
+            self.saveDeadline = .distantFuture
+            self.saveSessionNow()
         }
     }
 
@@ -248,39 +348,121 @@ final class TabStore: ObservableObject {
 
     private static let maxStateBytes = 256_000      // skip pathological histories rather than bloat every save
 
-    private func saveSession() {
+    /// The session as it is right now. Page state (back/forward + scroll) comes from each tab's cache, and is
+    /// refreshed only for tabs that navigated since (or for all of them when `refresh` is set: quit, sleep, leaving the app).
+    private func makeSession(refresh: Bool) -> Session {
         let entries = tabs.map { tab -> SessionTab in
-            // Live tab: ask the web view now. Unloaded tab: the state captured when it was unloaded/restored from disk.
-            let raw = tab.webView?.interactionState ?? tab.savedState
-            var data = raw as? Data
-            if data == nil, let raw { Log.lifecycle.error("interactionState is \(String(describing: type(of: raw))), not Data; not saved") }
+            if tab.isLoaded && (refresh || tab.stateDirty) { tab.refreshState() }
+            var data = tab.sessionState
             if let d = data, d.count > Self.maxStateBytes { data = nil }
             return SessionTab(url: tab.url, title: tab.title, state: data, pinned: tab.isPinned ? true : nil)
         }
-        let session = Session(tabs: entries,
-                              selected: tabs.firstIndex { $0.id == selectedID } ?? 0,
-                              closed: closedTabs.suffix(10).map { SavedClosed(url: $0.url, title: $0.title, pinned: $0.pinned ? true : nil) })
-        Storage.save(session, as: "session.json")
+        return Session(tabs: entries,
+                       selected: tabs.firstIndex { $0.id == selectedID } ?? 0,
+                       closed: closedTabs.suffix(10).map { SavedClosed(url: $0.url, title: $0.title, pinned: $0.pinned ? true : nil) })
+    }
+
+    func saveSessionNow(refreshStates: Bool = false) {
+        guard !tabs.isEmpty else { return }
+        sessions.commitAsync(makeSession(refresh: refreshStates))
+    }
+
+    private func handle(_ event: SessionEvent) {
+        switch event {
+        case .saved(let count):
+            if Self.bench { print("PERSIST saved tabs=\(count)"); fflush(stdout) }
+            if case .saveFailed = banner { banner = nil }          // the problem went away
+            retryDelay = 3
+        case .failed(let why):
+            if Self.bench { print("PERSIST failed \(why)"); fflush(stdout) }
+            banner = .saveFailed(why)
+            scheduleRetry()
+        case .backupsChanged(let list):
+            backups = list
+        }
+    }
+
+    /// After a failed save, try again with a growing delay (3 s, 6 s … at most 30 s). Nothing runs while saves succeed.
+    private func scheduleRetry() {
+        guard retryTask == nil else { return }
+        let delay = retryDelay
+        retryDelay = min(retryDelay * 2, 30)
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            self?.retryTask = nil
+            self?.saveSessionNow(refreshStates: true)
+        }
     }
 
     /// Restored tabs stay unloaded; only the selected one gets a web view, so launch cost doesn't scale with tab count.
     private func restoreSession() {
-        guard let session = Storage.load("session.json", as: Session.self), !session.tabs.isEmpty else { return }
-        tabs = session.tabs.map { saved in
-            let tab = Tab(url: saved.url, title: saved.title, store: self)
-            tab.savedState = saved.state
-            tab.isPinned = saved.pinned ?? false
-            return tab
+        backups = sessions.listBackups()
+        let outcome = sessions.load()
+        func report(_ source: String, _ tabs: Int, _ partial: Bool, _ quarantined: Int) {
+            if Self.bench { print("SESSION source=\(source) tabs=\(tabs) partial=\(partial) quarantined=\(quarantined)"); fflush(stdout) }
         }
-        tabs = tabs.filter(\.isPinned) + tabs.filter { !$0.isPinned }
-        closedTabs = (session.closed ?? []).map { ClosedTab(url: $0.url, title: $0.title, state: nil, pinned: $0.pinned ?? false) }
-        select(index: session.selected)
+        switch outcome {
+        case .fresh:
+            report("fresh", 0, false, 0)
+        case .unreadable(let quarantined):
+            report("unreadable", 0, false, quarantined)
+            if banner == nil { banner = .unreadable }
+        case .loaded(let session, let source, let partial, let quarantined, _):
+            tabs = session.tabs.map { saved in
+                let tab = Tab(url: saved.url, title: saved.title, store: self)
+                tab.savedState = saved.state
+                tab.isPinned = saved.pinned ?? false
+                return tab
+            }
+            tabs = tabs.filter(\.isPinned) + tabs.filter { !$0.isPinned }
+            closedTabs = (session.closed ?? []).map { ClosedTab(url: $0.url, title: $0.title, state: nil, pinned: $0.pinned ?? false) }
+            select(index: session.selected)
+            switch source {
+            case .primary: report("primary", tabs.count, partial, quarantined)
+            case .previous: report("previous", tabs.count, partial, quarantined)
+            case .backup: report("backup", tabs.count, partial, quarantined)
+            }
+            if banner == nil {
+                if partial { banner = .partialRestore }
+                else if source == .previous { banner = .restoredFromBackup("Your last session file was damaged, so Feather restored the save before it. Nothing was lost beyond the last moments.") }
+                else if case .backup(let date) = source {
+                    banner = .restoredFromBackup("Your session file was damaged, so Feather restored the backup from \(BackupEntry(url: URL(fileURLWithPath: "/"), date: date, tabs: tabs.count, pinned: 0).menuTitle.components(separatedBy: " · ").first ?? "earlier").")
+                }
+            }
+        }
     }
 
-    private func flushAll() {
-        sessionTask?.cancel()
-        sessionTask = nil
-        saveSession()
+    /// Opens the tabs of a backup in this window. Nothing is replaced or closed: tabs already open (same address) are
+    /// skipped, and pins are kept.
+    func restoreBackup(_ entry: BackupEntry) {
+        guard let data = try? Data(contentsOf: entry.url), let parsed = SessionParser.parse(data) else {
+            banner = .info("That backup couldn’t be read.")
+            return
+        }
+        let open = Set(tabs.compactMap { $0.url?.absoluteString })
+        var added: [Tab] = [], skipped = 0
+        for saved in parsed.session.tabs {
+            guard let url = saved.url else { continue }
+            if open.contains(url.absoluteString) { skipped += 1; continue }
+            let tab = Tab(url: url, title: saved.title, store: self)
+            tab.savedState = saved.state
+            tab.isPinned = saved.pinned ?? false
+            tabs.insert(tab, at: tab.isPinned ? tabs.filter(\.isPinned).count : tabs.count)
+            added.append(tab)
+        }
+        if let first = added.first { select(first.id) }
+        banner = .info("Opened \(added.count) tab\(added.count == 1 ? "" : "s") from the backup" + (skipped > 0 ? " (\(skipped) already open)." : "."))
+        tabsChanged()
+    }
+
+    func dismissBanner() { banner = nil }
+
+    /// Quit, sleep, shutdown: refresh every tab's state and write synchronously.
+    func flushAll() {
+        saveTask?.cancel(); saveTask = nil
+        retryTask?.cancel(); retryTask = nil
+        if !tabs.isEmpty { sessions.commitSync(makeSession(refresh: true)) }
         history.flush()
         bookmarks.flush()
         Storage.drain()

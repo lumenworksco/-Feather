@@ -64,6 +64,15 @@ struct BrowserCommands: Commands {
                 }
             }
             Divider()
+            Menu("Restore Previous Session") {
+                if store.backups.isEmpty {
+                    Text("No backups yet")
+                } else {
+                    ForEach(store.backups) { backup in Button(backup.menuTitle) { store.restoreBackup(backup) } }
+                }
+                Divider()
+                Button("Show Backups in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.sessions.backupsDirectory]) }
+            }
             Button("Clear History") { history.clear() }.disabled(history.entries.isEmpty)
         }
         CommandMenu("Bookmarks") {

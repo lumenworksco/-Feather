@@ -33,18 +33,26 @@ def frame(e):
     return (pt.x, pt.y, sz.width, sz.height)
 def find(text, maxd=16):
     hit = []
-    def walk(e, d):
+    def walk(e, d, wx):
         if hit: return
         label = " ".join(str(attr(e, n)) for n in ("AXTitle", "AXValue", "AXDescription", "AXHelp") if attr(e, n))
         f = frame(e)
-        if text in label and f and f[0] < 400 and f[2] > 4 and attr(e, "AXRole") in ("AXStaticText", "AXButton", "AXImage", "AXGroup"):
+        if text in label and f and wx <= f[0] < wx + 330 and f[2] > 4 and attr(e, "AXRole") in ("AXStaticText", "AXButton", "AXImage", "AXGroup"):
             hit.append(f); return
         if d < maxd:
-            for c in (attr(e, "AXChildren") or []): walk(c, d + 1)
-    for w in attr(app, "AXWindows") or []: walk(w, 0)
+            for c in (attr(e, "AXChildren") or []): walk(c, d + 1, wx)
+    for w in attr(app, "AXWindows") or []: walk(w, 0, frame(w)[0] if frame(w) else 0)
     return hit[0] if hit else None
 def center(f): return (f[0] + f[2] / 2, f[1] + f[3] / 2)
+def frontmost_pid():
+    out = subprocess.run(["osascript", "-e", 'tell application "System Events" to get unix id of first process whose frontmost is true'], capture_output=True, text=True).stdout.strip()
+    return int(out) if out.isdigit() else None
+
 def post(kind, x, y):
+    # Mouse presses go to whatever is under the cursor/in front: never send one unless the test copy is frontmost.
+    if kind != Quartz.kCGEventMouseMoved and frontmost_pid() != pid:
+        subprocess.run(["pkill", "-f", "Debug/Feather.app"])
+        raise SystemExit(f"ABORT: the test copy (pid {pid}) is not the frontmost app; refusing to send input.")
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, kind, (x, y), Quartz.kCGMouseButtonLeft))
 def click(pt):
     post(Quartz.kCGEventMouseMoved, *pt); time.sleep(0.25)

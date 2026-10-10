@@ -8,7 +8,7 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     let id = UUID()
     weak var store: TabStore?
 
-    @Published private(set) var url: URL?
+    @Published private(set) var url: URL? { didSet { store?.tabURLChanged(self) } }
     @Published private(set) var title: String
     @Published private(set) var favicon: NSImage?
     @Published private(set) var isLoading = false
@@ -27,9 +27,13 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     var lastActive = Date()
     /// WKWebView.interactionState captured when unloaded: restores back/forward list and scroll position.
     var savedState: Any?
+    /// The last known serialized state of the live page, kept so a session save doesn't have to ask the web view every time.
+    var cachedState: Data?
+    var stateDirty = true            // the page navigated since cachedState was taken
 
     private var observations: [NSKeyValueObservation] = []
     private var restoreStart: CFAbsoluteTime?
+    private var gotInitialFocus = false
     private var lastCrash: Date?
     private var wasUnloaded = false      // only a return from unloading counts as a "restore" for timing
 
@@ -65,15 +69,29 @@ final class Tab: NSObject, ObservableObject, Identifiable {
             } else if let url {
                 load(url, in: wv)
             }
+            if let data = savedState as? Data { cachedState = data }
             savedState = nil
         }
         store?.tabsChanged()
     }
 
+    /// What goes into the session file for this tab: the freshest known state, live or saved.
+    var sessionState: Data? { cachedState ?? (savedState as? Data) }
+
+    /// Asks the live page for its back/forward + scroll state (cheap, but not free, so it is only done when needed).
+    func refreshState() {
+        guard let wv = webView, wv.url != nil else { return }
+        cachedState = wv.interactionState as? Data
+        stateDirty = false
+    }
+
     /// Releases the web view (and with it the page's memory) but keeps everything needed to bring it back.
     func unload() {
         guard let wv = webView else { return }
-        savedState = wv.interactionState
+        let state = wv.interactionState
+        savedState = state
+        cachedState = state as? Data
+        stateDirty = false
         wasUnloaded = true
         if let u = wv.url { url = u }
         if let t = wv.title, !t.isEmpty { title = t }
@@ -114,7 +132,7 @@ final class Tab: NSObject, ObservableObject, Identifiable {
         observations = [
             // pushState/hash navigations only change `url` (no commit), so a URL change schedules a session save. Title changes
             // deliberately do not (flashing titles / unread counters would mean constant disk writes); titles are captured by the next save.
-            wv.observe(\.url, options: .new) { [weak self] wv, _ in MainActor.assumeIsolated { if let u = wv.url { self?.url = u; self?.store?.sessionChanged() } } },
+            wv.observe(\.url, options: .new) { [weak self] wv, _ in MainActor.assumeIsolated { if let u = wv.url { self?.url = u; self?.stateDirty = true; self?.store?.sessionChanged() } } },
             wv.observe(\.title, options: .new) { [weak self] wv, _ in MainActor.assumeIsolated { if let t = wv.title, !t.isEmpty { self?.title = t } } },
             wv.observe(\.isLoading, options: .new) { [weak self] wv, _ in MainActor.assumeIsolated { self?.isLoading = wv.isLoading } },
             wv.observe(\.estimatedProgress, options: .new) { [weak self] wv, _ in MainActor.assumeIsolated { self?.progress = wv.estimatedProgress } },
@@ -277,15 +295,23 @@ extension Tab: WKNavigationDelegate {
             favicon = store?.favicons.cached(host: host)
             webView.pageZoom = CGFloat(store?.settings.zoom(for: host) ?? 1.0)
         }
+        stateDirty = true
         store?.tabsChanged()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        stateDirty = true
+        store?.sessionChanged()
         if let start = restoreStart {
             restoreStart = nil
             store?.noteRestore(milliseconds: Int((CFAbsoluteTimeGetCurrent() - start) * 1000))
         }
         guard let url = webView.url else { return }
+        // The first page to finish loading in the selected tab gets keyboard focus (unless you're typing in the address bar).
+        if !gotInitialFocus {
+            gotInitialFocus = true
+            if store?.selectedID == id && !AddressFocus.fieldHasFocus() { focusContent() }
+        }
         store?.history.record(url: url, title: webView.title ?? "")
         // A background tab that was still loading was exempt from unloading; now that it's done, re-check.
         if store?.selectedID != id { store?.lifecycle.enforce() }
