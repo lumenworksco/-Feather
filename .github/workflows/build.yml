@@ -1,0 +1,17 @@
+name: Build
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Build (Release, unsigned CI build)
+        run: xcodebuild -project Feather.xcodeproj -scheme Feather -configuration Release -derivedDataPath build build
+      - name: Bundle contains the security-key permission and the site-name list
+        run: |
+          codesign -d --entitlements - build/Build/Products/Release/Feather.app 2>&1 | grep -q device.usb
+          test -s build/Build/Products/Release/Feather.app/Contents/Resources/public_suffix_list.txt

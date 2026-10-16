@@ -10,7 +10,7 @@ import ApplicationServices as A, Quartz
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = f"{ROOT}/build/Build/Products/Debug/Feather.app"
 LOG = "/private/tmp/feather-ux-test.log"
-PORT = 8765
+PORT = int(os.environ.get("FEATHER_TEST_PORT", 8765))
 CMD, SHIFT, CTRL = Quartz.kCGEventFlagMaskCommand, Quartz.kCGEventFlagMaskShift, Quartz.kCGEventFlagMaskControl
 K = dict(t=17, w=13, l=37, f=3, d=2, s=1, p=35, r=15, zero=29, equals=24, minus=27, one=18, two=19, tab=48, ret=36, esc=53, lb=33, rb=30)
 passed = failed = 0

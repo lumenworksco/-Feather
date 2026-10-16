@@ -39,9 +39,10 @@ def dump(pid, log):
 
 shutil.rmtree(DIR, ignore_errors=True)
 subprocess.run(["pkill", "-9", "-f", "Debug/Feather.app/Contents/MacOS/Feather"]); time.sleep(1)
-srv = subprocess.Popen(["python3", "-m", "http.server", "8765", "--bind", "0.0.0.0"], cwd=ROOT / "tests/restore", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
+PORT = int(os.environ.get("FEATHER_TEST_PORT", 8765))
+srv = subprocess.Popen(["python3", "-m", "http.server", str(PORT), "--bind", "0.0.0.0"], cwd=ROOT / "tests/restore", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
 try:
-    A, B = "http://localhost:8765/icon-a.html", "http://127.0.0.1:8765/icon-b.html"
+    A, B = f"http://localhost:{PORT}/icon-a.html", f"http://127.0.0.1:{PORT}/icon-b.html"
     print("== first run: load both pages so their icons get fetched and saved")
     pid, log = launch("--load-all", f"--open={A}", f"--open={B}"); time.sleep(8)
     first = dump(pid, log)

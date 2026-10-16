@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/build/Build/Products/Debug/Feather.app"
 PROFILE_DIR="$HOME/Library/Containers/dev.feather.Feather/Data/tmp/FeatherProfile-restoretest"
 LOG=/private/tmp/feather-restore-test.log
-PORT=8765
+PORT=${FEATHER_TEST_PORT:-8765}
 # Safety: these tests kill Feather processes. Refuse to run if a real (non-test) session is open.
 for p in $(pgrep -x Feather); do
   ps -o command= -p "$p" | grep -qE -- '--(profile|fresh|selftest)' || { echo "A real Feather session is running (pid $p). Quit it first; this test would kill it."; exit 1; }

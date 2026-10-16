@@ -44,7 +44,7 @@ Run from the repo root after a Debug build. They drive the real app and need a l
 
 ## Known issues
 - A closed `Tab` object (title/URL/icon only; its web view is always freed) is occasionally still referenced after closing. Cause not found; the self-test warns instead of failing on it.
-- `tests/ready-test.sh` once failed three checks when run immediately after `tests/restore-test.sh` and passed on every rerun; not explained.
+- The test suites serve pages on port 8765 by default; set `FEATHER_TEST_PORT` if something else uses it. `tests/ready-test.sh` waits for a previous suite's processes to exit (without that wait it failed three checks once).
 - A crash can lose changes from the last ~0.25 s. A power cut mid-save is untested (the write path forces data to disk, but that can only be verified by actually cutting power).
 - Test input goes to whatever app is in front, so the input tests (ux, drag, persistence, filmstrip) check that the test copy is frontmost before every key or click and abort otherwise. They still need a machine nobody is using.
 

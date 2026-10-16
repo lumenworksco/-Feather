@@ -13,6 +13,7 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 - **Memory-conscious by design.** Blank and restored tabs have no web view at all; pages in tabs you haven't visited are unloaded according to a setting (Balanced / Memory Saver / Aggressive). A tab is never unloaded while it is loading, playing media, using the camera or microphone, on an excluded site, or has text typed into a form.
 - **Crash-safe sessions.** Your tabs, pins, selection, and each tab's back/forward history and scroll position are saved within about a quarter of a second of any change and restored after a quit, crash or `kill -9`, with backups and safeguards against a damaged session file (see [Keeping your tabs safe](#keeping-your-tabs-safe)). Only the selected tab loads at launch. If WebKit's page process dies, the tab reloads itself.
 - Bookmarks, local history, downloads, find in page, per-site zoom, printing, camera/microphone/location prompts, file upload, JavaScript dialogs, local HTML files.
+- **USB security keys** (YubiKey and other FIDO2 keys) for sign-in and registration, including PIN entry (see [Security keys](#security-keys-yubikey-and-other-usb-fido2-keys)).
 - **Default-browser support**: opens links from other apps.
 - A start page with your bookmarks and recent sites, a lavender brand palette, and animations that only run in response to what you do (all disabled by macOS *Reduce motion*).
 

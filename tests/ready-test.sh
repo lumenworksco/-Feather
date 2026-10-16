@@ -5,11 +5,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/build/Build/Products/Debug/Feather.app"
 PROFILE_DIR="$HOME/Library/Containers/dev.feather.Feather/Data/tmp/FeatherProfile-readytest"
 LOG=/private/tmp/feather-ready-test.log
-PORT=8765
+PORT=${FEATHER_TEST_PORT:-8765}
 # Safety: these tests kill Feather processes. Refuse to run if a real (non-test) session is open.
 for p in $(pgrep -x Feather); do
   ps -o command= -p "$p" | grep -qE -- '--(profile|fresh|selftest)' || { echo "A real Feather session is running (pid $p). Quit it first; this test would kill it."; exit 1; }
 done
+# A previous suite's Feather and web server may still be shutting down: wait for them (a leftover made three checks fail once).
+for _ in $(seq 1 20); do pgrep -x Feather >/dev/null || break; sleep 1; done
+sleep 3
 pass=0; fail=0
 check() { if [ "$2" = "ok" ]; then echo "PASS  $1"; pass=$((pass+1)); else echo "FAIL  $1  ($3)"; fail=$((fail+1)); fi; }
 cleanup() { pkill -x Feather 2>/dev/null; [ -n "${SRV:-}" ] && kill $SRV 2>/dev/null; [ -n "${DLFILE:-}" ] && rm -f "$DLFILE"; }
