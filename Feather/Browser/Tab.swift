@@ -290,7 +290,7 @@ extension Tab: WKNavigationDelegate {
         }
     }
 
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { failure = nil }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { failure = nil; store?.webauthn.cancel(webView: webView) }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let host = webView.url?.host {

@@ -33,6 +33,7 @@ struct FeatherApp: App {
                         try? await Task.sleep(for: .milliseconds(600))
                         if dims.count == 2, let w = NSApp.windows.first(where: { $0.title == "Feather" }) { w.setContentSize(NSSize(width: dims[0], height: dims[1])) }
                     }
+                    if CommandLine.arguments.contains("--keyprobe") { KeyProbe.run() }
                     if CommandLine.arguments.contains("--selftest") { await SelfTest.run(store) }
                     if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--snapshot=") }) {
                         // Renders the window's own views (not web content or the blur material) to a PNG, for layout checks.

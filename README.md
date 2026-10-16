@@ -29,9 +29,19 @@ Your open tabs, pins, selection, each tab's back/forward list and scroll positio
 
 **Limits:** changes in the last fraction of a second before a crash, text typed into web forms, and a page's JavaScript state are not saved. Tested by killing the app (`kill -9`), quitting, damaging the files in every way listed in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), and loading a copy of a real session. **Not tested:** a power cut or Mac restart in the middle of a save, which needs a real restart.
 
+## Security keys (YubiKey and other USB FIDO2 keys)
+
+Apple does not let third-party browsers use passkeys or security keys through `WKWebView` without a restricted entitlement that needs a paid Apple Developer account. Feather talks to USB keys itself (CTAP2 over USB HID, no third-party code) and answers a page's WebAuthn requests, so signing in and registering with a **USB security key works**, including PIN entry (PIN protocol v1).
+
+* **Works (tested with a real key):** register and sign in with a USB FIDO2 key, with or without a PIN. The sheet always names the site that is asking.
+* **Implemented, not yet tested:** several accounts on one key (discoverable credentials and the account picker), sites that use the older `appid` extension, the "this key isn't registered, plug in another" flow, and cancel/timeout paths.
+* **Does not work:** iCloud Keychain passkeys and Touch ID (these need Apple's entitlement), NFC and Bluetooth keys, phones as authenticators, "autofill" passkey sign-in. Sites that only offer these show their own fallback.
+* **Safety rules:** the site identity is checked against the page's real address (taken from WebKit, not from the page) and the Public Suffix List; only secure (https) pages; only the page in front can ask; no use from frames on other sites; wrong PINs are never retried automatically.
+* **Tested:** a real YubiKey (firmware 5.7.4) registered and signed in on a local test page, results verified by Yubico's `python-fido2` (`tests/webauthn-test.py`, also with PIN). **Not tested:** other key models, key lockout, and sign-in on individual large sites; please report problems.
+
 ## What's not there yet
 
-No password manager or AutoFill, no extensions, no ad/tracker blocking, no private browsing, no download list (just a progress badge), no sync, one window only. Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
+No password manager or AutoFill, no passkeys stored on the Mac (USB security keys work, see above), no extensions, no ad/tracker blocking, no private browsing, no download list (just a progress badge), no sync, one window only. Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
 
 ## Memory: a goal, not a result
 
@@ -72,3 +82,5 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the architecture, launch argu
 ## License
 
 [MIT](LICENSE). Icon design: created for this project.
+
+Third-party data: `Feather/Resources/public_suffix_list.txt` is the [Public Suffix List](https://publicsuffix.org/) (Mozilla Public License 2.0, https://mozilla.org/MPL/2.0/), used to check which site names a page may claim.

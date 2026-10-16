@@ -50,6 +50,7 @@ struct BrowserWindow: View {
             }
             .motion(Theme.spring, value: store.banner)
         }
+        .overlay { KeySheet(controller: store.webauthn) }
         .opacity(launched ? 1 : 0)
         .scaleEffect(launched ? 1 : 0.985)
         .ignoresSafeArea()

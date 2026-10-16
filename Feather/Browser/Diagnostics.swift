@@ -30,6 +30,58 @@ enum SelfTest {
             print("[selftest] File menu: \(file.items.map { "\($0.title)[\($0.keyEquivalent)]" })")
         }
 
+        // --- Security keys: encoding vectors (RFC 8949 Appendix A), USB framing, and the site-identity rules.
+        do {
+            func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
+            let vectors: [(CBOR, String)] = [
+                (.unsigned(0), "00"), (.unsigned(23), "17"), (.unsigned(24), "1818"), (.unsigned(100), "1864"), (.unsigned(1000), "1903e8"),
+                (.unsigned(1_000_000), "1a000f4240"), (.unsigned(1_000_000_000_000), "1b000000e8d4a51000"),
+                (.negative(-1), "20"), (.negative(-10), "29"), (.negative(-100), "3863"), (.negative(-1000), "3903e7"),
+                (.bool(false), "f4"), (.bool(true), "f5"), (.null, "f6"),
+                (.bytes(Data([1, 2, 3, 4])), "4401020304"), (.text(""), "60"), (.text("IETF"), "6449455446"), (.text("\u{00fc}"), "62c3bc"),
+                (.array([]), "80"), (.array([.int(1), .int(2), .int(3)]), "83010203"),
+                (.array([.int(1), .array([.int(2), .int(3)]), .array([.int(4), .int(5)])]), "8301820203820405"),
+                (.map([]), "a0"), (.map([(.int(1), .int(2)), (.int(3), .int(4))]), "a201020304"),
+                (.map([(.text("a"), .int(1)), (.text("b"), .array([.int(2), .int(3)]))]), "a26161016162820203"),
+            ]
+            let bad = vectors.filter { hex($0.0.encoded()) != $0.1 || (try? CBOR.decode($0.0.encoded())) != $0.0 }
+            check("CBOR matches the RFC 8949 test vectors (encode and decode)", bad.isEmpty, "\(vectors.count) vectors, failing: \(bad.map { $0.1 })")
+            // CTAP2 needs canonical map order: shorter keys first, then bytewise.
+            check("CBOR sorts map keys canonically", hex(CBOR.map([(.text("bb"), .int(1)), (.text("a"), .int(2)), (.int(10), .int(3)), (.int(1), .int(4))]).encoded()) == "a4" + "0104" + "0a03" + "616102" + "62626201")
+            let junk: [Data] = [Data(), Data([0x18]), Data([0x5f]), Data([0xa1, 0x01]), Data([0x82, 0x01]), Data([0x01, 0x02]), Data(repeating: 0x81, count: 40) + Data([0x01])]
+            check("CBOR rejects truncated, indefinite, trailing and too-deep input", junk.allSatisfy { (try? CBOR.decode($0)) == nil })
+
+            let payload = Data((0..<200).map { UInt8($0) })
+            let packets = CTAPHID.packets(cid: 0x01020304, command: .cbor, payload: payload)
+            var re = CTAPHID.Reassembler(cid: 0x01020304)
+            var out: CTAPHID.Reassembler.Result = .needMore
+            for p in packets { out = re.feed(p) }
+            check("USB framing: 200 bytes → \(packets.count) packets of 64 and back", packets.count == 4 && packets.allSatisfy { $0.count == 64 } && out == .message(command: 0x10, payload: payload))
+            var other = CTAPHID.Reassembler(cid: 0x0A0B0C0D)
+            check("USB framing ignores another channel's packets", other.feed(packets[0]) == .ignored)
+            var seq = CTAPHID.Reassembler(cid: 0x01020304)
+            _ = seq.feed(packets[0])
+            check("USB framing detects a skipped packet", { if case .malformed = seq.feed(packets[2]) { return true }; return false }())
+
+            let psl = PublicSuffix.shared
+            check("Public suffix list loaded", psl.isPublicSuffix("com") && psl.isPublicSuffix("co.uk") && psl.isPublicSuffix("github.io") && !psl.isPublicSuffix("github.com"))
+            check("Registrable domains", psl.registrableDomain("accounts.example.co.uk") == "example.co.uk" && psl.registrableDomain("a.b.github.com") == "github.com" && psl.registrableDomain("co.uk") == nil)
+            let gh = CallerOrigin(scheme: "https", host: "github.com", port: 0)
+            let sub = CallerOrigin(scheme: "https", host: "login.example.co.uk", port: 0)
+            check("rpId: own host and parent domains are allowed", gh.validate(rpId: "github.com") && sub.validate(rpId: "example.co.uk") && sub.validate(rpId: "login.example.co.uk"))
+            check("rpId: other sites, public suffixes and look-alikes are refused",
+                  !gh.validate(rpId: "evil.com") && !gh.validate(rpId: "com") && !sub.validate(rpId: "co.uk") && !gh.validate(rpId: "notgithub.com")
+                  && !gh.validate(rpId: "github.com.evil.com") && !gh.validate(rpId: "GitHub.com") && !gh.validate(rpId: "github.com:443") && !gh.validate(rpId: "https://github.com"))
+            check("rpId: IP addresses are refused, localhost is allowed for testing",
+                  !CallerOrigin(scheme: "http", host: "127.0.0.1", port: 80).validate(rpId: "127.0.0.1") && CallerOrigin(scheme: "http", host: "localhost", port: 8080).validate(rpId: "localhost"))
+            check("AppID: same registrable domain over https only", gh.validate(appID: "https://github.com/u2f/trusted_facets") && !gh.validate(appID: "http://github.com/x") && !gh.validate(appID: "https://evil.com/x") && !gh.validate(appID: "https://github.io/x"))
+            check("Secure context: https and local http only", gh.isSecureContext && !CallerOrigin(scheme: "http", host: "github.com", port: 0).isSecureContext && CallerOrigin(scheme: "http", host: "localhost", port: 1).isSecureContext)
+            check("Origin string includes non-default ports only", CallerOrigin(scheme: "https", host: "a.com", port: 443).string == "https://a.com" && CallerOrigin(scheme: "http", host: "localhost", port: 8766).string == "http://localhost:8766")
+            let cd = ClientData(type: "webauthn.get", challenge: Data([1, 2, 3]), origin: "https://github.com")
+            check("clientDataJSON is built natively", String(data: cd.json, encoding: .utf8) == #"{"type":"webauthn.get","challenge":"AQID","origin":"https://github.com","crossOrigin":false}"#)
+            check("Base64URL round trip without padding", Base64URL.encode(Data([0xfb, 0xff, 0xfe])) == "-__-" && Base64URL.decode("-__-") == Data([0xfb, 0xff, 0xfe]))
+        }
+
         // --- Persistence layer: pure logic against temporary folders.
         do {
             let fm = FileManager.default

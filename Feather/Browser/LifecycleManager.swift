@@ -80,6 +80,7 @@ final class LifecycleManager {
     private func canUnload(_ tab: Tab) async -> Bool {
         guard let wv = tab.webView, !tab.isLoading else { return false }
         if let host = tab.url?.host, store.settings.isExcluded(host) { return false }
+        if store.webauthn.isBusy(wv) { return false }          // a security-key sign-in is waiting for a touch
         if wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none { return false }
         let host = tab.url?.host ?? "-"
         return await race(seconds: 2, fallback: false, onTimeout: { Log.lifecycle.error("unload check timed out for \(host); keeping tab") }) { [weak wv] in

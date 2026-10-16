@@ -55,3 +55,11 @@ Run from the repo root after a Debug build. They drive the real app and need a l
 - Synthetic Unicode key events are ignored by text fields; tests must type with real key codes.
 - A window opens where it was last placed, so tests must find the sidebar relative to the window, not at fixed screen coordinates.
 - The bundle identifier (`dev.feather.Feather`) determines the sandbox container; changing it orphans existing user data unless it is migrated.
+
+## Security keys
+
+Code in `Feather/Browser/SecurityKey/`: `CBOR` (RFC 8949 subset) → `CTAPHID` (64-byte USB framing) → `HIDTransport` (IOHIDManager, FIDO usage page only, needs the `com.apple.security.device.usb` entitlement) → `CTAPClient` / `CTAPDevice` (CTAP2 commands, PIN protocol v1) → `WebAuthnController` (request checks, flows, the sheet's state) ← `WebAuthnBridge` (message handler + the script that replaces `navigator.credentials.get/create` for `publicKey` requests).
+
+* `Feather --keyprobe` (Debug): prints what a plugged-in key reports (no touch needed).
+* `tests/webauthn-test.py [--uv]`: real-key register + sign-in, verified by python-fido2 (`pip install fido2` in a venv). Needs a key and two touches.
+* The self-test covers the encoding vectors, USB framing and the site-identity rules.

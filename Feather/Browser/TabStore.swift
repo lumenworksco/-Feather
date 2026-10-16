@@ -74,6 +74,8 @@ final class TabStore: ObservableObject {
     let favicons = Favicons()
     let downloads = Downloads()
     let address = AddressModel()
+    /// Security keys (YubiKey etc.): WebKit does not offer them to third-party browsers, so Feather speaks to the key itself.
+    let webauthn = WebAuthnController()
     private(set) lazy var lifecycle = LifecycleManager(store: self)
 
     /// False until the app has finished launching. Creating WKWebViews inside SwiftUI's @StateObject init
@@ -100,6 +102,8 @@ final class TabStore: ObservableObject {
         // WKWebView reports window.outerWidth/outerHeight as 0, where Safari reports the window size. Canvas-based apps
         // (Google Sheets and Docs) use it to choose their drawing resolution and fall back to a blurry 1x canvas when it is 0.
         config.userContentController.addUserScript(WKUserScript(source: Self.windowMetrics, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        config.userContentController.addUserScript(WKUserScript(source: WebAuthnBridge.script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        config.userContentController.addScriptMessageHandler(WebAuthnBridge(controller: webauthn), contentWorld: .page, name: WebAuthnBridge.name)
         configuration = config
 
         // The profile lock comes first: a second Feather on the same profile must not write anything to it.
@@ -222,6 +226,7 @@ final class TabStore: ObservableObject {
     }
 
     func close(_ id: Tab.ID) {
+        if let wv = tabs.first(where: { $0.id == id })?.webView { webauthn.cancel(webView: wv) }
         guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: i)
         if let closed = tab.close() {
