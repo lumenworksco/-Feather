@@ -39,6 +39,8 @@ final class Updates: ObservableObject {
     private var exchange: URL { UpdateTrust.exchangeDirectory(home: home) }
     private var pending: (manifest: UpdateManifest, zipURL: URL, manifestData: Data, signature: Data)?
     private var autoTask: Task<Void, Never>?
+    private var activationObserver: NSObjectProtocol?
+    private var lastAttempt = Date.distantPast
     private var dismissedVersion: String?
 
     init(store: TabStore?) {
@@ -63,23 +65,40 @@ final class Updates: ObservableObject {
 
     // MARK: Automatic checks
 
-    /// Looks shortly after launch, then about once a day. Never installs anything by itself.
+    /// Looks shortly after launch, whenever you come back to Feather, and about once a day. Never installs anything by itself.
+    /// Timers alone are not enough: macOS slows an app's timers right down while it is in the background, so the check also
+    /// runs when the app becomes active.
     func startAutomaticChecks() {
         let isTest = Storage.isFresh || Storage.profile != nil
-        guard !isTest || CommandLine.arguments.contains(where: { $0.hasPrefix("--update-feed=") }) else { return }
+        let hasTestFeed = CommandLine.arguments.contains { $0.hasPrefix("--update-feed=") }
+        guard !isTest || hasTestFeed else { return }
         autoTask?.cancel()
+        let first = hasTestFeed ? 3.0 : 20.0
+        Self.log.notice("automatic update checks on: first in \(Int(first)) s, then when Feather is brought to the front and about daily")
         autoTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(CommandLine.arguments.contains(where: { $0.hasPrefix("--update-feed=") }) ? 3 : 45))
+            try? await Task.sleep(for: .seconds(first))
             while !Task.isCancelled {
                 guard let self else { return }
-                // A test feed is always asked; otherwise about once a day.
-                let due = CommandLine.arguments.contains { $0.hasPrefix("--update-feed=") } || Date().timeIntervalSince(self.store?.settings.lastUpdateCheck ?? .distantPast) > 20 * 3600
-                if self.store?.settings.autoUpdateCheck ?? true, due {
-                    await self.check(userInitiated: false)
-                }
+                await self.checkIfDue(reason: "timer")
                 try? await Task.sleep(for: .seconds(3600))
             }
         }
+        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.checkIfDue(reason: "app became active") }
+        }
+    }
+
+    /// Asks only if the setting is on, the last successful check is old enough, and no attempt was made in the last 10 minutes
+    /// (so being offline, or switching apps often, never turns into a stream of requests).
+    private func checkIfDue(reason: String) async {
+        let hasTestFeed = CommandLine.arguments.contains { $0.hasPrefix("--update-feed=") }
+        guard store?.settings.autoUpdateCheck ?? true else { Self.log.notice("check skipped (\(reason, privacy: .public)): switched off in Settings"); return }
+        let sinceSuccess = Date().timeIntervalSince(store?.settings.lastUpdateCheck ?? .distantPast)
+        guard hasTestFeed || sinceSuccess > 20 * 3600 else { Self.log.notice("check skipped (\(reason, privacy: .public)): last successful check was \(Int(sinceSuccess / 60)) min ago"); return }
+        guard Date().timeIntervalSince(lastAttempt) > (hasTestFeed ? 0 : 600) else { return }
+        lastAttempt = Date()
+        Self.log.notice("automatic check (\(reason, privacy: .public))")
+        await check(userInitiated: false)
     }
 
     // MARK: Checking
@@ -112,7 +131,11 @@ final class Updates: ObservableObject {
                 state = userInitiated ? .failed("The newest release isn't signed correctly, so Feather ignored it.") : .upToDate
                 return
             }
-            guard UpdateTrust.isNewer(manifest, thanVersion: current.version, build: current.build) else { state = .upToDate; return }
+            guard UpdateTrust.isNewer(manifest, thanVersion: current.version, build: current.build) else {
+                Self.log.notice("latest release \(manifest.version, privacy: .public) build \(manifest.build) is signed and not newer than the installed one")
+                state = .upToDate
+                return
+            }
             guard let zipURL = assets[manifest.asset] else { throw URLError(.fileDoesNotExist) }
             Self.log.notice("release \(manifest.version, privacy: .public) build \(manifest.build) is signed and newer")
             pending = (manifest, zipURL, manifestData, signature)

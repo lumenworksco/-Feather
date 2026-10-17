@@ -129,6 +129,16 @@ try:
     check("helper alone refuses a tampered zip and leaves the app alone", status.get("ok") is False and "damaged" in status.get("message", "") and version(COPY) == "0.1.2", status)
     shutil.rmtree(EXCHANGE, ignore_errors=True)
 
+    # --- Checks must not depend on a timer alone: coming back to the app (after it was in the background) must start one too.
+    write_feed([])                                                          # a release list with nothing in it: no update, so nothing installs
+    start([FEED]); time.sleep(8)
+    p0 = pids(COPY)[0]
+    def front(pid): sh("osascript", "-e", f'tell application "System Events" to set frontmost of (first process whose unix id is {pid}) to true')
+    sh("osascript", "-e", 'tell application "Finder" to activate'); time.sleep(2)
+    front(p0); ok = wait(lambda: "automatic check (app became active)" in log_lines(), 30, step=2)
+    check("coming back to the app starts an update check (not only the timer)", ok, log_lines()[-400:])
+    stop(); write_feed(["update.json", "update.json.sig", zip_path.name])
+
     # --- The real thing.
     t0 = time.strftime("%Y-%m-%d %H:%M:%S")
     old_pids = start([FEED, "--update-auto-install"])

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.4-alpha
+- The automatic update check no longer depends on a timer alone (macOS slows timers of background apps): it also runs when you switch back to Feather, and logs why a check ran or was skipped. This is the first version that can be reached by a real automatic update from 0.1.3.
+
 ## 0.1.3-alpha
 - **Updates inside the app.** Feather checks GitHub for a newer release about once a day (switch off in Settings), shows a banner, and installs it with one click: it saves your tabs, swaps itself, and reopens. Updates are signed by the project owner and checked for size and SHA-256; downgrades are refused. This is the first version with the updater, so it has to be installed by hand once; later versions can update themselves.
 

@@ -7,8 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.3"
-    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "0.1.4"
+    CURRENT_PROJECT_VERSION: "6"
     ENABLE_HARDENED_RUNTIME: YES
     # The public half of the key that signs updates (tools/new-update-key.sh). Empty = this build refuses every update.
     UPDATE_PUBLIC_KEY: "Gib8r8dHJvHB9sTs3eDY9risFp/pXMZ8lqDKEnXNCeQ="
