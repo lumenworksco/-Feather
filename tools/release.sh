@@ -21,7 +21,7 @@ cd "$WORK/src"
 [ "$(git rev-parse HEAD)" = "$LOCAL_HEAD" ] || { echo "GitHub's main ($(git rev-parse --short HEAD)) is not your local HEAD ($(git -C "$HERE/.." rev-parse --short HEAD)). Push your commit (or investigate: someone else pushed) before releasing." >&2; exit 1; }
 echo "building commit $(git rev-parse --short HEAD) from a fresh clone"
 
-PUB=$(grep -E '^\s*UPDATE_PUBLIC_KEY:' project.yml | head -1 | sed -E 's/.*UPDATE_PUBLIC_KEY:\s*"?([^"]*)"?.*/\1/')
+PUB=$(grep -E '^[[:space:]]*UPDATE_PUBLIC_KEY:' project.yml | head -1 | awk -F'"' '{print $2}')
 [ -n "$PUB" ] || { echo "UPDATE_PUBLIC_KEY is empty in project.yml: updates could never be verified. Run tools/new-update-key.sh and put the public key there (and push it)." >&2; exit 1; }
 
 xcodegen generate >/dev/null
