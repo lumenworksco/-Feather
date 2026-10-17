@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.3-alpha
+- **Updates inside the app.** Feather checks GitHub for a newer release about once a day (switch off in Settings), shows a banner, and installs it with one click: it saves your tabs, swaps itself, and reopens. Updates are signed by the project owner and checked for size and SHA-256; downgrades are refused. This is the first version with the updater, so it has to be installed by hand once; later versions can update themselves.
+
 ## 0.1.2-alpha
 - **USB security keys (YubiKey and other FIDO2 keys)** now work for sign-in and registration, including PIN entry. WebKit does not offer this to third-party browsers, so Feather talks to the key itself. Not supported: iCloud passkeys, Touch ID, NFC/Bluetooth keys (these need an Apple entitlement).
 - Site icons are kept across relaunches (small local cache, refreshed weekly, cleared with Clear History).

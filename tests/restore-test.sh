@@ -19,7 +19,7 @@ trap cleanup EXIT
 pkill -x Feather 2>/dev/null; sleep 1
 rm -rf "$PROFILE_DIR"; defaults delete dev.feather.profile.restoretest 2>/dev/null
 
-(cd "$ROOT/tests/restore" && python3 -m http.server $PORT --bind 127.0.0.1 >/dev/null 2>&1) & SRV=$!
+(cd "$ROOT/tests/restore" && exec python3 -m http.server $PORT --bind 127.0.0.1 >/dev/null 2>&1) & SRV=$!
 sleep 1
 
 launch() {   # launch <extra args...>

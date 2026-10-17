@@ -82,7 +82,13 @@ enum Storage {
     static func acquireProfileLock() -> Bool {
         let fd = open(directory.appendingPathComponent("profile.lock").path, O_RDWR | O_CREAT, 0o600)
         guard fd >= 0 else { return true }                    // cannot even create the lock file: don't block the user
-        if flock(fd, LOCK_EX | LOCK_NB) == 0 { lockDescriptor = fd; return true }
+        // After an update the previous Feather may still be finishing its last save: wait for it (up to 10 s) instead of
+        // starting read-only, which would stop this copy from saving anything.
+        let patience = CommandLine.arguments.contains("--after-update") ? 40 : 1
+        for attempt in 0..<patience {
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 { lockDescriptor = fd; return true }
+            if attempt < patience - 1 { Thread.sleep(forTimeInterval: 0.25) }
+        }
         close(fd)
         return false
     }

@@ -14,6 +14,9 @@ struct BrowserCommands: Commands {
     }
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { Task { await store.updates.check(userInitiated: true); store.updates.reportCheckResultInAlert() } }
+        }
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { store.newTab() }.keyboardShortcut("t")
             Button("Open Location") { store.focusAddress() }.keyboardShortcut("l")

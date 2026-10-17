@@ -16,3 +16,5 @@ bench/results/*
 !bench/results/.gitkeep
 
 build-release/
+FeatherUpdater/Info.plist
+build-*/

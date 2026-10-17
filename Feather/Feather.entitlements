@@ -20,5 +20,9 @@
 	<true/>
 	<key>com.apple.security.device.usb</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/Library/Caches/dev.feather.updater/</string>
+	</array>
 </dict>
 </plist>

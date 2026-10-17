@@ -76,6 +76,8 @@ final class TabStore: ObservableObject {
     let address = AddressModel()
     /// Security keys (YubiKey etc.): WebKit does not offer them to third-party browsers, so Feather speaks to the key itself.
     let webauthn = WebAuthnController()
+    /// New versions: found and prepared by the app, installed by the helper in Contents/Library.
+    private(set) lazy var updates = Updates(store: self)
     private(set) lazy var lifecycle = LifecycleManager(store: self)
 
     /// False until the app has finished launching. Creating WKWebViews inside SwiftUI's @StateObject init
@@ -134,6 +136,7 @@ final class TabStore: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.isReady = true
+                self.updates.startAutomaticChecks()
                 // Cookies from a profile import must be in place before any page loads, or the first loads would be signed out.
                 if CookieImport.isPending { Task { await CookieImport.run(); self.finishLaunch() } } else { self.finishLaunch() }
             }

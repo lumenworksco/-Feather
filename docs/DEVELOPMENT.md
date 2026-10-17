@@ -44,7 +44,7 @@ Run from the repo root after a Debug build. They drive the real app and need a l
 
 ## Known issues
 - A closed `Tab` object (title/URL/icon only; its web view is always freed) is occasionally still referenced after closing. Cause not found; the self-test warns instead of failing on it.
-- The test suites serve pages on port 8765 by default; set `FEATHER_TEST_PORT` if something else uses it. `tests/ready-test.sh` waits for a previous suite's processes to exit (without that wait it failed three checks once).
+- The test suites serve pages on port 8765 by default; set `FEATHER_TEST_PORT` if something else uses it. `tests/ready-test.sh` once failed three checks right after `tests/restore-test.sh` because that suite left its web server running (it killed the wrapper shell, not the server); both scripts now `exec` the server, and the readiness script also waits for a previous suite's processes to exit.
 - A crash can lose changes from the last ~0.25 s. A power cut mid-save is untested (the write path forces data to disk, but that can only be verified by actually cutting power).
 - Test input goes to whatever app is in front, so the input tests (ux, drag, persistence, filmstrip) check that the test copy is frontmost before every key or click and abort otherwise. They still need a machine nobody is using.
 
@@ -63,3 +63,20 @@ Code in `Feather/Browser/SecurityKey/`: `CBOR` (RFC 8949 subset) → `CTAPHID` (
 * `Feather --keyprobe` (Debug): prints what a plugged-in key reports (no touch needed).
 * `tests/webauthn-test.py [--uv]`: real-key register + sign-in, verified by python-fido2 (`pip install fido2` in a venv). Needs a key and two touches.
 * The self-test covers the encoding vectors, USB framing and the site-identity rules.
+
+## Updates
+
+Code: `Shared/UpdateTrust.swift` (manifest, Ed25519 verification, version rules; compiled into both the app and the helper), `Feather/Updates/Updates.swift` (check, download, hand-off), `Feather/Updates/UpdateBanner.swift`, and `FeatherUpdater/main.swift` (the unsandboxed installer, embedded at `Contents/Library/FeatherUpdater.app`).
+
+* The app finds the release through `api.github.com/repositories/<id>/releases/latest` (the numeric id survives a rename), downloads `update.json` + `update.json.sig`, verifies them with the public key built into the app (`UPDATE_PUBLIC_KEY` in `project.yml`, written into both Info.plists), then downloads the zip named in the manifest and checks size and SHA-256.
+* The app and helper exchange files through `~/Library/Caches/dev.feather.updater/` (a sandbox exception for exactly that folder): Launch Services drops launch arguments for sandboxed callers, and macOS asks before one app reads another's container.
+* The helper trusts nothing: it re-verifies the signature, size, hash, bundle id and version, waits for the app to quit, unpacks with `ditto --noqtn`, checks `codesign`, copies next to the old app, swaps, starts the new version (rolling back if it does not start) and trashes the old one.
+* `--update-feed=URL` points a copy at another feed (https, or http on localhost); it cannot make Feather accept anything not signed by the build's key. `--update-auto-install` (only with a local feed) installs without a click. Test builds pass their own key with `UPDATE_PUBLIC_KEY=...` to `xcodebuild`.
+* `tests/update-test.py` builds two versions with a throwaway key and runs the whole flow on a copy at `/Applications/Feather-uptest.app` with a throwaway profile (it never touches the real app). Builds are cached in `build-test/`; `--rebuild` redoes them.
+
+### Making a release
+1. One-time: `bash tools/new-update-key.sh` (stores the signing key in your Keychain, prints the public key for `UPDATE_PUBLIC_KEY`), then **back the key up** with `bash tools/export-update-key.sh` into a password manager. If the key is lost, installed copies cannot be updated automatically and must be reinstalled by hand.
+2. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in `project.yml`, update `CHANGELOG.md`, commit and push.
+3. `bash tools/release.sh` builds from a fresh clone of the pushed commit, signs the manifest, and prints the files to upload.
+4. `gh release create vX.Y.Z-alpha --target main --title "Feather X.Y.Z-alpha" --notes-file <notes> --latest <the four files>`.
+Never put the private key in GitHub Actions secrets: that would defeat the point of signing.

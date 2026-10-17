@@ -10,6 +10,22 @@ struct SettingsView: View {
     init(store: TabStore) {
         self.store = store
         _settings = ObservedObject(wrappedValue: store.settings)
+        _updatesModel = ObservedObject(wrappedValue: store.updates)
+    }
+
+    @ObservedObject private var updatesModel: Updates
+
+    private var updateStatusText: String {
+        switch store.updates.state {
+        case .checking: return "Checking…"
+        case .upToDate: return "You're up to date."
+        case .available(let m): return "Version \(m.version) is available."
+        case .downloading(let m, _): return "Downloading \(m.version)…"
+        case .ready(let m): return "Version \(m.version) is ready to install."
+        case .installing: return "Installing…"
+        case .failed(let message): return message
+        case .idle: return store.updates.canVerify ? "" : "This build has no update key, so it cannot update itself."
+        }
     }
 
     private var version: String {
@@ -53,6 +69,15 @@ struct SettingsView: View {
                     TextField("Site", text: $newHost, prompt: Text("Add a site, e.g. example.com")).labelsHidden().onSubmit(addHost)
                     Button("Add", action: addHost).disabled(newHost.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+            Section("Updates") {
+                Toggle("Check for updates automatically", isOn: $settings.autoUpdateCheck)
+                HStack {
+                    Text(updateStatusText).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check Now") { Task { await store.updates.check(userInitiated: true) } }.disabled(!store.updates.canVerify)
+                }
+                Text("Checking asks GitHub for the newest release about once a day. Updates are signed by the project owner, and Feather installs one only when you click.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Default browser") {
                 Button("Make Feather the Default Browser…") {

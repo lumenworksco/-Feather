@@ -1,3 +1,4 @@
+import CryptoKit
 import os
 
 enum Log {
@@ -80,6 +81,46 @@ enum SelfTest {
             let cd = ClientData(type: "webauthn.get", challenge: Data([1, 2, 3]), origin: "https://github.com")
             check("clientDataJSON is built natively", String(data: cd.json, encoding: .utf8) == #"{"type":"webauthn.get","challenge":"AQID","origin":"https://github.com","crossOrigin":false}"#)
             check("Base64URL round trip without padding", Base64URL.encode(Data([0xfb, 0xff, 0xfe])) == "-__-" && Base64URL.decode("-__-") == Data([0xfb, 0xff, 0xfe]))
+        }
+
+        // --- Updates: only what the owner signed is accepted, and only if it is newer.
+        do {
+            let owner = Curve25519.Signing.PrivateKey(), stranger = Curve25519.Signing.PrivateKey()
+            func manifest(_ edit: (inout UpdateManifest) -> Void = { _ in }) -> Data {
+                var m = UpdateManifest(schema: 1, bundleID: "dev.feather.Feather", version: "0.1.3", build: 5, asset: "Feather-0.1.3-alpha.zip", sha256: String(repeating: "ab", count: 32), size: 1_400_000)
+                edit(&m)
+                let e = JSONEncoder(); e.outputFormatting = [.sortedKeys]
+                return try! e.encode(m)
+            }
+            func sign(_ d: Data, _ k: Curve25519.Signing.PrivateKey = owner) -> Data { Data((try! k.signature(for: d)).base64EncodedString().utf8) }
+            let good = manifest()
+            check("Update: a manifest signed by the owner is accepted", UpdateTrust.verify(manifest: good, signatureText: sign(good), key: owner.publicKey)?.version == "0.1.3")
+            var tampered = good; tampered[tampered.startIndex + 5] ^= 1
+            check("Update: a manifest changed after signing is refused", UpdateTrust.verify(manifest: tampered, signatureText: sign(good), key: owner.publicKey) == nil)
+            check("Update: a manifest signed by someone else is refused", UpdateTrust.verify(manifest: good, signatureText: sign(good, stranger), key: owner.publicKey) == nil)
+            check("Update: a build without a key refuses everything", UpdateTrust.verify(manifest: good, signatureText: sign(good), key: nil) == nil)
+            check("Update: garbage in place of a signature is refused", UpdateTrust.verify(manifest: good, signatureText: Data("not base64!!".utf8), key: owner.publicKey) == nil)
+            let broken: [(String, (inout UpdateManifest) -> Void)] = [
+                ("another app's bundle id", { $0.bundleID = "com.evil.App" }), ("a path in the asset name", { $0.asset = "../Feather-1.zip" }),
+                ("a non-zip asset", { $0.asset = "Feather-1.dmg" }), ("a short checksum", { $0.sha256 = "abcd" }), ("an upper-case checksum", { $0.sha256 = String(repeating: "AB", count: 32) }),
+                ("size zero", { $0.size = 0 }), ("an enormous size", { $0.size = 900_000_000 }), ("a version with letters", { $0.version = "1.x" }), ("build zero", { $0.build = 0 }), ("an unknown schema", { $0.schema = 2 }),
+            ]
+            let rejected = broken.filter { name, edit in let m = manifest(edit); return UpdateTrust.verify(manifest: m, signatureText: sign(m), key: owner.publicKey) != nil }.map(\.0)
+            check("Update: validly signed but malformed manifests are refused", rejected.isEmpty, "accepted: \(rejected)")
+            let m = UpdateTrust.verify(manifest: good, signatureText: sign(good), key: owner.publicKey)!
+            func newer(_ v: String, _ b: Int, than cv: String, _ cb: Int) -> Bool { var x = m; x.version = v; x.build = b; return UpdateTrust.isNewer(x, thanVersion: cv, build: cb) }
+            check("Update: newer versions are offered, equal and older are not (no downgrades or replays)",
+                  newer("0.1.3", 5, than: "0.1.2", 4) && newer("0.1.2", 5, than: "0.1.2", 4) && newer("0.1.10", 1, than: "0.1.9", 9) && newer("0.2", 1, than: "0.1.99", 9)
+                  && !newer("0.1.2", 4, than: "0.1.2", 4) && !newer("0.1.2", 3, than: "0.1.2", 4) && !newer("0.1.1", 99, than: "0.1.2", 4) && !newer("0.1", 4, than: "0.1.0", 4))
+            let local = URL(string: "http://127.0.0.1:8000/x")!
+            check("Update: downloads must be https (plain http only for this machine in tests)",
+                  Updates.isAcceptable(URL(string: "https://github.com/x")!, allowLocal: false) && !Updates.isAcceptable(URL(string: "http://github.com/x")!, allowLocal: true)
+                  && Updates.isAcceptable(local, allowLocal: true) && !Updates.isAcceptable(local, allowLocal: false) && !Updates.isAcceptable(URL(string: "ftp://127.0.0.1/x")!, allowLocal: true)
+                  && !Updates.isAcceptable(URL(string: "http://localhost.evil.com/x")!, allowLocal: true))
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("sha-\(UUID().uuidString)")
+            try? Data("abc".utf8).write(to: tmp)
+            check("Update: SHA-256 of a file", (try? UpdateTrust.sha256Hex(of: tmp)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+            try? FileManager.default.removeItem(at: tmp)
         }
 
         // --- Persistence layer: pure logic against temporary folders.

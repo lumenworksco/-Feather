@@ -41,14 +41,17 @@ struct BrowserWindow: View {
         }
         .overlay(alignment: .top) {
             // Over the whole window, not inside the sidebar: it must be visible with the sidebar hidden too.
-            ZStack {
-                if let banner = store.banner {
-                    PersistenceBannerView(banner: banner, store: store)
-                        .padding(.top, 46).padding(.horizontal, 24)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+            VStack(spacing: 8) {
+                ZStack {
+                    if let banner = store.banner {
+                        PersistenceBannerView(banner: banner, store: store)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
+                .motion(Theme.spring, value: store.banner)
+                UpdateBannerView(updates: store.updates)
             }
-            .motion(Theme.spring, value: store.banner)
+            .padding(.top, 46).padding(.horizontal, 24)
         }
         .overlay { KeySheet(controller: store.webauthn) }
         .opacity(launched ? 1 : 0)

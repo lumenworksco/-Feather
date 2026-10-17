@@ -19,7 +19,7 @@ cleanup() { pkill -x Feather 2>/dev/null; [ -n "${SRV:-}" ] && kill $SRV 2>/dev/
 trap cleanup EXIT
 pkill -x Feather 2>/dev/null; sleep 1
 rm -rf "$PROFILE_DIR"; defaults delete dev.feather.profile.readytest 2>/dev/null; mkdir -p "$PROFILE_DIR"
-(cd "$ROOT/tests/restore" && python3 -m http.server $PORT --bind 127.0.0.1 >/dev/null 2>&1) & SRV=$!
+(cd "$ROOT/tests/restore" && exec python3 -m http.server $PORT --bind 127.0.0.1 >/dev/null 2>&1) & SRV=$!
 sleep 1
 dump() { : > "$LOG"; kill -USR2 "$(pgrep -x Feather)"; sleep 1.5; grep "^TAB" "$LOG"; }
 start() { : > "$LOG"; open -n --stdout "$LOG" --stderr "$LOG" "$APP" "${@:1}"; for i in $(seq 1 30); do pgrep -x Feather >/dev/null && break; sleep 0.5; done; }

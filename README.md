@@ -14,6 +14,7 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 - **Crash-safe sessions.** Your tabs, pins, selection, and each tab's back/forward history and scroll position are saved within about a quarter of a second of any change and restored after a quit, crash or `kill -9`, with backups and safeguards against a damaged session file (see [Keeping your tabs safe](#keeping-your-tabs-safe)). Only the selected tab loads at launch. If WebKit's page process dies, the tab reloads itself.
 - Bookmarks, local history, downloads, find in page, per-site zoom, printing, camera/microphone/location prompts, file upload, JavaScript dialogs, local HTML files.
 - **USB security keys** (YubiKey and other FIDO2 keys) for sign-in and registration, including PIN entry (see [Security keys](#security-keys-yubikey-and-other-usb-fido2-keys)).
+- **Updates inside the app**: Feather checks for a new version about once a day (switch off in Settings), shows a banner, and installs it with one click, then reopens with your tabs. Updates are signed by the project owner; see [Updates](#updates).
 - **Default-browser support**: opens links from other apps.
 - A start page with your bookmarks and recent sites, a lavender brand palette, and animations that only run in response to what you do (all disabled by macOS *Reduce motion*).
 
@@ -40,6 +41,16 @@ Apple does not let third-party browsers use passkeys or security keys through `W
 * **Safety rules:** the site identity is checked against the page's real address (taken from WebKit, not from the page) and the Public Suffix List; only secure (https) pages; only the page in front can ask; no use from frames on other sites; wrong PINs are never retried automatically.
 * **Tested:** a real YubiKey (firmware 5.7.4) registered and signed in on a local test page, results verified by Yubico's `python-fido2` (`tests/webauthn-test.py`, also with PIN). **Not tested:** other key models, key lockout, and sign-in on individual large sites; please report problems.
 
+## Updates
+
+Feather asks GitHub for the newest release about once a day (**Settings ▸ Updates** switches it off; **Feather ▸ Check for Updates…** checks now). Nothing is installed without your click.
+
+* **Signed.** Each release carries a small manifest signed with a private key that only the project owner holds (Ed25519, kept in the owner's Keychain, never in the repository or in GitHub). Feather has the matching public key built in and ignores anything that does not verify, so a hacked GitHub account alone cannot push a malicious update. The manifest also pins the download's size and SHA-256, and updates that are not newer (downgrades, replays) are refused.
+* **How it installs.** The sandboxed app downloads and checks the update, saves your tabs, then starts a small separate helper (`Contents/Library/FeatherUpdater.app`, not sandboxed) that repeats every check, swaps the app in place and starts the new version. If the new version does not start, the old one is put back; the old version goes to the Trash. Why a helper: everything a sandboxed app writes is marked "downloaded", so macOS would ask "Open Anyway" after every update.
+* **Tested:** a full update of a copy of the app against a local test feed (swap, relaunch, tabs restored, no quarantine mark), and refusal of a wrongly signed release, a tampered download, and a tampered download handed straight to the helper (`tests/update-test.py`).
+* **Not tested yet:** updating the real installed copy from a real GitHub release (the first real update happens when the next version after this one is published), and apps installed from a browser download (macOS may ask once about the helper). If an update ever fails, the banner offers the download page.
+* Privacy: the check is a request to GitHub (your IP address and Feather's version are visible to GitHub), nothing else.
+
 ## What's not there yet
 
 No password manager or AutoFill, no passkeys stored on the Mac (USB security keys work, see above), no extensions, no ad/tracker blocking, no private browsing, no download list (just a progress badge), no sync, one window only. Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
@@ -50,7 +61,7 @@ Feather is designed to be light, but **no measurements against Safari or any oth
 
 ## Privacy
 
-No analytics, accounts or telemetry. Tabs, history and bookmarks are stored locally in the app's sandbox container. Besides the pages you open, Feather makes one request of its own: it downloads the icon of sites you visit to show in the tab. Icons are saved locally (about 1-4 KB each, at most 400 files, refreshed weekly) so tabs show them straight after a relaunch; Clear History removes them except for sites you still have open or bookmarked. The default search engine is Google, so searches typed in the address bar go to Google. The app runs in the macOS App Sandbox.
+No analytics, accounts or telemetry. Tabs, history and bookmarks are stored locally in the app's sandbox container. Besides the pages you open, Feather makes two kinds of request of its own: it downloads the icon of sites you visit to show in the tab, and it asks GitHub for the newest release about once a day (Settings ▸ Updates switches this off). Icons are saved locally (about 1-4 KB each, at most 400 files, refreshed weekly) so tabs show them straight after a relaunch; Clear History removes them except for sites you still have open or bookmarked. The default search engine is Google, so searches typed in the address bar go to Google. The app runs in the macOS App Sandbox.
 
 ## Build and run
 
