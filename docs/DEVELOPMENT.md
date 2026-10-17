@@ -77,6 +77,6 @@ Code: `Shared/UpdateTrust.swift` (manifest, Ed25519 verification, version rules;
 ### Making a release
 1. One-time: `bash tools/new-update-key.sh` (stores the signing key in your Keychain, prints the public key for `UPDATE_PUBLIC_KEY`), then **back the key up** with `bash tools/export-update-key.sh` into a password manager. If the key is lost, installed copies cannot be updated automatically and must be reinstalled by hand.
 2. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in `project.yml`, update `CHANGELOG.md`, commit and push.
-3. `bash tools/release.sh` builds from a fresh clone of the pushed commit, signs the manifest, and prints the files to upload.
+3. `bash tools/release.sh` builds from a fresh clone of the pushed commit, signs the manifest, and prints the files to upload. It refuses unless the pushed commit is exactly your local HEAD (you only sign what you have seen) and it runs the signing script from your local checkout, never from the clone (code from GitHub must not reach the key).
 4. `gh release create vX.Y.Z-alpha --target main --title "Feather X.Y.Z-alpha" --notes-file <notes> --latest <the four files>`.
 Never put the private key in GitHub Actions secrets: that would defeat the point of signing.

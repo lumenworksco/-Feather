@@ -148,6 +148,7 @@ try:
     log = (EXCHANGE / "updater.log").read_text() if (EXCHANGE / "updater.log").exists() else ""
     check("the installer reported success", "OK: Updated Feather from 0.1.2 to 0.1.3" in log, log[-300:])
     check("the update's download files were cleaned up", not any(n.startswith(("Feather-", "update.json")) for n in os.listdir(EXCHANGE)), os.listdir(EXCHANGE))
+    check("no leftovers in /Applications (the old version is in the Trash under a visible name)", not [n for n in os.listdir("/Applications") if "replaced" in n],)
     check("hidden leftovers in /Applications were removed", not [n for n in os.listdir("/Applications") if n.startswith((".Feather-update-", ".Feather-old-"))])
     stop()
 finally:

@@ -7,11 +7,18 @@
 # It publishes nothing. Needs: the signing key in your Keychain (tools/new-update-key.sh), UPDATE_PUBLIC_KEY set in project.yml,
 # xcodegen, and `pip install cryptography`. The version comes from project.yml.
 set -euo pipefail
+# This script (and make-update.py, which reads your signing key) always runs from YOUR local checkout, never from the clone below:
+# code that came from GitHub must never get to touch the signing key.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+LOCAL_HEAD="$(git -C "$HERE/.." rev-parse HEAD)"
+[ -z "$(git -C "$HERE/.." status --porcelain)" ] || { echo "Your checkout has uncommitted changes; commit (and push) them first." >&2; exit 1; }
 REPO_URL="${FEATHER_REPO_URL:-https://github.com/lumenworksco/Feather.git}"
 WORK="/tmp/feather-release-$(date +%s)"
 mkdir -p "$WORK/out"
 git clone -q "$REPO_URL" "$WORK/src"
 cd "$WORK/src"
+# Only sign what you have seen: the pushed commit must be exactly your local one.
+[ "$(git rev-parse HEAD)" = "$LOCAL_HEAD" ] || { echo "GitHub's main ($(git rev-parse --short HEAD)) is not your local HEAD ($(git -C "$HERE/.." rev-parse --short HEAD)). Push your commit (or investigate: someone else pushed) before releasing." >&2; exit 1; }
 echo "building commit $(git rev-parse --short HEAD) from a fresh clone"
 
 PUB=$(grep -E '^\s*UPDATE_PUBLIC_KEY:' project.yml | head -1 | sed -E 's/.*UPDATE_PUBLIC_KEY:\s*"?([^"]*)"?.*/\1/')
@@ -33,7 +40,7 @@ codesign -d --entitlements - "$APP" 2>&1 | grep -q device.usb || { echo "USB ent
 
 ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl "$APP" "$ZIP"
 ( cd "$WORK/out" && shasum -a 256 "$(basename "$ZIP")" > "$(basename "$ZIP").sha256" )
-python3 "$WORK/src/tools/make-update.py" "$ZIP" "$WORK/out" >/dev/null
+python3 "$HERE/make-update.py" "$ZIP" "$WORK/out" >/dev/null
 
 # Check the signature the way the app will, with the public key from project.yml.
 python3 - "$PUB" "$WORK/out" <<'PY'

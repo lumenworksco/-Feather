@@ -125,7 +125,11 @@ func performUpdate() {
             _ = launch(target, arguments: ["--after-update"] + request.relaunchArguments)
             throw Failure("the new version did not start, so \(fromVersion) was put back")
         }
-        try? fm.trashItem(at: old, resultingItemURL: nil)          // recoverable from the Trash if something is wrong with the new version
+        // The previous version goes to the Trash under a visible name (a name starting with a dot would be hidden even there),
+        // so it can be put back if something is wrong with the new one.
+        var visible = parent.appendingPathComponent("Feather \(fromVersion) (replaced).app")
+        if fm.fileExists(atPath: visible.path) { visible = parent.appendingPathComponent("Feather \(fromVersion) (replaced \(id)).app") }
+        if (try? fm.moveItem(at: old, to: visible)) != nil { try? fm.trashItem(at: visible, resultingItemURL: nil) } else { try? fm.trashItem(at: old, resultingItemURL: nil) }
         for name in [request.manifest, request.signature, request.zip] { try? fm.removeItem(at: exchange.appendingPathComponent(name)) }
     } catch {
         let message = (error as? Failure)?.message ?? error.localizedDescription
