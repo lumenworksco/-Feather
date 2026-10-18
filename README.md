@@ -1,6 +1,6 @@
 # Feather
 
-**Website and downloads: https://lumenworksco.github.io/-Feather/**
+**Website and downloads: https://feather.braunf.com/**
 
 A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm interface with considered motion, and a tab lifecycle that unloads pages you aren't using to keep memory in check. Swift, SwiftUI and `WKWebView`; no third-party dependencies, no accounts, no telemetry.
 
