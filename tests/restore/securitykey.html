@@ -1,0 +1,23 @@
+<!doctype html><title>securitykey: starting</title>
+<script>
+// Does the browser actually listen for a security key (YubiKey)? Blocked = an immediate error; listening = it waits until our timeout.
+var out = [];
+function show() { document.title = "securitykey: " + out.join(" | "); }
+async function attempt(label, fn) {
+  var t0 = performance.now(), ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 7000);
+  try { await fn(ctl.signal); out.push(label + "=SUCCESS"); }
+  catch (e) { out.push(label + "=" + e.name + "@" + Math.round(performance.now() - t0) + "ms" + (e.message ? "(" + e.message.slice(0, 60) + ")" : "")); }
+  clearTimeout(timer); show();
+}
+(async function () {
+  // WebAuthn is refused unless the document has focus: wait for it (the test brings the window to the front).
+  for (var i = 0; i < 60 && !document.hasFocus(); i++) await new Promise(function (r) { setTimeout(r, 250); });
+  out.push("focused=" + document.hasFocus()); show();
+  await attempt("registerKey", function (signal) {
+    return navigator.credentials.create({ signal: signal, publicKey: {
+      rp: { name: "Feather test", id: "localhost" }, user: { id: new Uint8Array(8), name: "t", displayName: "t" },
+      challenge: new Uint8Array(32), pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      authenticatorSelection: { authenticatorAttachment: "cross-platform", userVerification: "discouraged" }, timeout: 6000 } });
+  });
+})();
+</script>

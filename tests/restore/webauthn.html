@@ -1,0 +1,25 @@
+<!doctype html><title>webauthn: starting</title>
+<script>
+// What can a page learn about passkey support in this browser? Result goes into the title so a test can read it.
+var out = [];
+function show() { document.title = "webauthn: " + out.join(" | "); }
+out.push("PublicKeyCredential=" + (typeof window.PublicKeyCredential));
+out.push("credentials=" + (typeof navigator.credentials) + "/" + (navigator.credentials && typeof navigator.credentials.get));
+show();
+(async function () {
+  try {
+    if (window.PublicKeyCredential) {
+      out.push("platformAuth=" + await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+      out.push("conditionalUI=" + (PublicKeyCredential.isConditionalMediationAvailable ? await PublicKeyCredential.isConditionalMediationAvailable() : "no-api"));
+    }
+  } catch (e) { out.push("capabilityError=" + e.name); }
+  show();
+  // Try a real passkey request (aborts itself after 6 s); the error name tells us WHY it fails.
+  try {
+    var ctl = new AbortController(); setTimeout(function () { ctl.abort(); }, 6000);
+    await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32), rpId: "localhost", userVerification: "preferred", timeout: 5000 }, signal: ctl.signal });
+    out.push("get=ok");
+  } catch (e) { out.push("get=" + e.name + (e.message ? "(" + e.message.slice(0, 70) + ")" : "")); }
+  show();
+})();
+</script>
