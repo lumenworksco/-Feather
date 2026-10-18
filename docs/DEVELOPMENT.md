@@ -80,3 +80,11 @@ Code: `Shared/UpdateTrust.swift` (manifest, Ed25519 verification, version rules;
 3. `bash tools/release.sh` builds from a fresh clone of the pushed commit, signs the manifest, and prints the files to upload. It refuses unless the pushed commit is exactly your local HEAD (you only sign what you have seen) and it runs the signing script from your local checkout, never from the clone (code from GitHub must not reach the key).
 4. `gh release create vX.Y.Z-alpha --target main --title "Feather X.Y.Z-alpha" --notes-file <notes> --latest <the four files>`.
 Never put the private key in GitHub Actions secrets: that would defeat the point of signing.
+
+## Website
+
+`site/` is the public website (plain HTML, CSS and a little JavaScript; no frameworks, fonts or third-party requests, and a strict content-security policy). `.github/workflows/pages.yml` publishes it to GitHub Pages whenever `site/` changes on `main`.
+
+* The download button reads the latest release from GitHub's API in the visitor's browser (version, size, date, SHA-256) and falls back to the releases page.
+* The screenshots in `site/assets/` come from the current app and made-up demo sites, never real browsing: `python3 tools/site-screenshots.py` (needs the Debug build and Pillow), then `python3 tools/site-og.py` for the icons and social-preview image. Refresh them when the app's look changes.
+* Check changes locally with `python3 -m http.server -d site 8000`.

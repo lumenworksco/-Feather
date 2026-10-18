@@ -1,10 +1,15 @@
 # Feather
 
+**Website and downloads: https://lumenworksco.github.io/-Feather/**
+
 A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm interface with considered motion, and a tab lifecycle that unloads pages you aren't using to keep memory in check. Swift, SwiftUI and `WKWebView`; no third-party dependencies, no accounts, no telemetry.
 
 > **Status: early alpha.** One developer, one machine. It is usable for everyday browsing, but it is missing things you may rely on (see [What's not there yet](#whats-not-there-yet)) and the app is **not notarized**. Expect rough edges.
 
-![Feather with pinned tabs and the sidebar](docs/screenshots/sidebar.png)
+<p align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/app-dark.webp">
+  <img src="site/assets/app-light.webp" width="820" alt="The Feather window: a sidebar with pinned tabs and open tabs, and the start page.">
+</picture></p>
 
 ## Features
 
@@ -18,7 +23,6 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 - **Default-browser support**: opens links from other apps.
 - A start page with your bookmarks and recent sites, a lavender brand palette, and animations that only run in response to what you do (all disabled by macOS *Reduce motion*).
 
-![The start page](docs/screenshots/start.png)
 
 ## Keeping your tabs safe
 Your open tabs, pins, selection, each tab's back/forward list and scroll position, and the recently-closed list are saved within about a quarter of a second of any change, and whenever you leave the app, sleep the Mac, or quit.

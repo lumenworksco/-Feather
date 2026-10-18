@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feather: a small, calm browser for your Mac</title>
+<meta name="description" content="Feather is a free, open-source macOS browser built on WebKit, with sidebar tabs, pinned tabs, USB security key support, and sessions designed never to lose your tabs. Early alpha.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#121216" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbfaff" media="(prefers-color-scheme: light)">
+<link rel="canonical" href="https://lumenworksco.github.io/-Feather/">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Feather: a small, calm browser for your Mac">
+<meta property="og:description" content="Sidebar tabs, quiet animation, and sessions built never to lose your tabs. Free and open source. Early alpha for macOS 14+ on Apple silicon.">
+<meta property="og:url" content="https://lumenworksco.github.io/-Feather/">
+<meta property="og:image" content="https://lumenworksco.github.io/-Feather/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="style.css">
+<script src="boot.js"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top" id="top">
+  <div class="wrap bar">
+    <a class="brand" href="#top" aria-label="Feather, back to top">
+      <img src="assets/icon-512.png" width="34" height="34" alt="">
+      <span>Feather</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#safety">Your tabs</a>
+      <a href="#keys">Security keys</a>
+      <a href="#status">Status</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="bar-actions">
+      <a class="ghost" href="https://github.com/lumenworksco/-Feather" rel="noopener">GitHub</a>
+      <a class="btn small" href="#download">Download</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow reveal">Early alpha &middot; free and open source</p>
+    <h1 class="reveal">A small, calm browser <span class="grad">for your Mac.</span></h1>
+    <p class="lead reveal">Feather is a native macOS browser built on WebKit. Sidebar tabs, quiet animation, and one promise it works hard to keep: it doesn&rsquo;t lose your tabs.</p>
+    <div class="cta reveal">
+      <a class="btn big" href="https://github.com/lumenworksco/-Feather/releases/latest" data-dl rel="noopener">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+        <span data-dl-label>Download for Mac</span>
+      </a>
+      <a class="btn big quiet" href="https://github.com/lumenworksco/-Feather" rel="noopener">View the source</a>
+    </div>
+    <p class="meta reveal"><span data-version>Latest release</span> &middot; macOS 14 or later &middot; Apple silicon &middot; MIT license</p>
+
+    <figure class="shot reveal">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/app-dark.webp">
+        <img src="assets/app-light.webp" width="2200" height="1375" alt="The Feather window: a sidebar with a row of pinned tabs and a list of open tabs, and the start page showing the Feather icon and four bookmarks.">
+      </picture>
+    </figure>
+  </div>
+</section>
+
+<section class="pillars wrap" aria-label="What Feather is about">
+  <article class="pillar reveal">
+    <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+    <h2>It keeps your tabs</h2>
+    <p>Quit, crash, force quit: your tabs, pins and history are saved within a fraction of a second, written safely, and backed up. They are there when you come back.</p>
+  </article>
+  <article class="pillar reveal">
+    <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></svg></div>
+    <h2>Memory-conscious by design</h2>
+    <p>Tabs you haven&rsquo;t looked at in a while are unloaded and reload when you return, never while playing media, using the camera, or holding text you haven&rsquo;t sent. <span class="soft">No benchmarks yet, so no claims.</span></p>
+  </article>
+  <article class="pillar reveal">
+    <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+    <h2>Native and private</h2>
+    <p>Swift and SwiftUI on Apple&rsquo;s own WebKit. No accounts, no analytics, no telemetry, no third-party code. It runs inside the macOS App Sandbox.</p>
+  </article>
+</section>
+
+<section class="section" id="features">
+  <div class="wrap">
+    <h2 class="section-title reveal">Everything you need, nothing in the way</h2>
+    <p class="section-sub reveal">A focused set of features, done carefully.</p>
+    <div class="grid">
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></div>
+        <h3>Sidebar and pinned tabs</h3>
+        <p>Tabs live in a sidebar. Pinned tabs sit in an icon grid at the top: drag a tab onto it to pin, drag to reorder, drag back to unpin.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="5"/><circle cx="8.5" cy="12" r="1.6"/><path d="M13 12h4"/></svg></div>
+        <h3>One address bar</h3>
+        <p>URLs and searches in one place. It takes focus on every new tab, and a click selects the whole address so you can just type.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg></div>
+        <h3>Crash-safe sessions</h3>
+        <p>Rolling backups, quarantine for damaged files, and <em>History &gt; Restore Previous Session</em> to undo a mistaken mass-close.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="3.5"/><path d="m10.5 12.5 9.5-9.5M16 7l2.5 2.5M13.5 9.5 15 11"/></svg></div>
+        <h3>USB security keys</h3>
+        <p>Sign in and register with a YubiKey or other FIDO2 key, PIN included. Apple doesn&rsquo;t offer this to third-party browsers, so Feather speaks to the key itself.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg></div>
+        <h3>Updates inside the app</h3>
+        <p>Feather finds new versions, verifies the owner&rsquo;s signature, and installs with one click, then reopens with your tabs. Nothing happens without your click.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg></div>
+        <h3>Quiet, considered motion</h3>
+        <p>Animations that respond to what you do, in light and dark. They switch off with macOS <em>Reduce Motion</em>.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></div>
+        <h3>The everyday basics</h3>
+        <p>Bookmarks, local-only history, downloads, find in page, per-site zoom, printing, file upload, and camera, microphone and location prompts.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg></div>
+        <h3>Default-browser ready</h3>
+        <p>Make Feather your default browser and links from other apps open in it. It opens local HTML files too.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" id="safety">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow reveal">The one thing it is serious about</p>
+      <h2 class="section-title left reveal">Your tabs are not lost.</h2>
+      <p class="section-sub left reveal">Browsers crash, Macs restart, batteries die. Feather is built around the idea that what you had open should still be there afterwards.</p>
+      <ul class="ticks reveal">
+        <li><strong>Saved almost instantly.</strong> Within about a quarter of a second of any change, and again on quit, sleep and shutdown.</li>
+        <li><strong>Written safely.</strong> Each save goes to a temporary file, is forced to disk, read back and compared, and only then renamed into place.</li>
+        <li><strong>Always a way back.</strong> The previous save is kept, backups roll every ten minutes and before a sudden drop in tab count.</li>
+        <li><strong>Nothing unreadable is ever overwritten.</strong> A damaged file is set aside, Feather restores from the last good copy, and it tells you.</li>
+        <li><strong>One bad tab costs one tab.</strong> A problem with a single entry never takes the rest down with it.</li>
+      </ul>
+    </div>
+    <aside class="note reveal">
+      <h3>Tested, and where the limits are</h3>
+      <p>Tested by force-quitting, quitting, damaging the session files in a dozen different ways, and restoring copies of a real session.</p>
+      <p>Not saved: text you typed into a web form but didn&rsquo;t send, and a page&rsquo;s JavaScript state. Not tested: a power cut in the middle of a save.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="section" id="keys">
+  <div class="wrap split flip">
+    <figure class="keyshot reveal">
+      <img src="assets/securitykey.webp" width="672" height="343" alt="Feather&rsquo;s security key sheet: a key icon, the words Insert your security key, the site that is asking, and a Cancel button.">
+    </figure>
+    <div>
+      <p class="eyebrow reveal">Sign-in</p>
+      <h2 class="section-title left reveal">Your YubiKey works here.</h2>
+      <p class="section-sub left reveal">WebKit doesn&rsquo;t offer security keys to third-party browsers without an Apple entitlement. Feather talks to USB FIDO2 keys directly instead, and always shows which site is asking.</p>
+      <ul class="ticks reveal">
+        <li>Register and sign in with a USB security key, with or without a PIN.</li>
+        <li>The site&rsquo;s identity is checked against the page&rsquo;s real address and the Public Suffix List, and only secure pages can ask.</li>
+        <li>Wrong PINs are never retried for you, and the sheet shows how many attempts are left.</li>
+      </ul>
+      <p class="fine reveal">Tested with a real YubiKey (firmware 5.7.4), results verified by Yubico&rsquo;s python-fido2. iCloud passkeys, Touch ID, and NFC or Bluetooth keys are not supported; they need an Apple program Feather isn&rsquo;t part of.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" id="status">
+  <div class="wrap">
+    <h2 class="section-title reveal">An honest early alpha</h2>
+    <p class="section-sub reveal">Feather is made by one person and tested on one Mac. Here is where it stands.</p>
+    <div class="trio">
+      <article class="panel good reveal">
+        <h3>Works today</h3>
+        <ul>
+          <li>Daily browsing with sidebar and pinned tabs</li>
+          <li>Crash-safe sessions and backups</li>
+          <li>USB security keys, with PIN</li>
+          <li>Signed in-app updates</li>
+          <li>Bookmarks, history, downloads, find, zoom, print</li>
+          <li>Dark and light, with considered motion</li>
+        </ul>
+      </article>
+      <article class="panel reveal">
+        <h3>Not built yet</h3>
+        <ul>
+          <li>Password manager and AutoFill</li>
+          <li>Extensions</li>
+          <li>Ad and tracker blocking</li>
+          <li>Private browsing</li>
+          <li>A download list, sync, multiple windows</li>
+          <li>Intel Macs (Apple silicon only)</li>
+        </ul>
+      </article>
+      <article class="panel reveal">
+        <h3>Not tested</h3>
+        <ul>
+          <li>Other Macs and macOS versions (built for 14+, run on one)</li>
+          <li>Memory use compared with other browsers</li>
+          <li>Video calls and printing</li>
+          <li>Apps installed from a browser download, when updating</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section download" id="download">
+  <div class="wrap">
+    <div class="dl-card reveal">
+      <img src="assets/icon-512.png" width="96" height="96" alt="" class="dl-icon">
+      <h2>Get Feather</h2>
+      <p class="dl-version"><strong data-version>Latest release</strong><span data-size></span><span data-date></span></p>
+      <div class="cta center">
+        <a class="btn big" href="https://github.com/lumenworksco/-Feather/releases/latest" data-dl rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+          <span data-dl-label>Download for Mac</span>
+        </a>
+      </div>
+      <p class="fine">Free &middot; MIT license &middot; macOS 14 or later &middot; Apple silicon only</p>
+      <p class="sha" data-sha-row hidden>SHA-256 <code data-sha></code> <button type="button" class="copy" data-copy>Copy</button></p>
+    </div>
+
+    <div class="steps">
+      <h3 class="reveal">Opening it the first time</h3>
+      <p class="reveal">Feather is signed ad hoc and not notarized, because notarization needs a paid Apple Developer account. macOS will say it can&rsquo;t verify the app, and asks you once to allow it.</p>
+      <ol class="reveal">
+        <li><span>1</span><div><strong>Unzip and move it.</strong> Drag <em>Feather.app</em> to your Applications folder.</div></li>
+        <li><span>2</span><div><strong>Try to open it once.</strong> macOS will refuse and say it can&rsquo;t be verified.</div></li>
+        <li><span>3</span><div><strong>Allow it.</strong> Open <em>System Settings &gt; Privacy &amp; Security</em>, scroll to the message about Feather, and click <em>Open Anyway</em>.</div></li>
+      </ol>
+      <div class="two">
+        <div class="mini reveal">
+          <h4>Already using Feather?</h4>
+          <p>Choose <em>Feather &gt; Check for Updates&hellip;</em>. From version 0.1.3, Feather updates itself with one click.</p>
+        </div>
+        <div class="mini reveal">
+          <h4>Prefer to build it yourself?</h4>
+          <p>You need Xcode and <a href="https://github.com/yonaskolb/XcodeGen" rel="noopener">XcodeGen</a>.</p>
+          <pre><code>git clone https://github.com/lumenworksco/-Feather.git Feather
+cd Feather
+xcodegen generate
+xcodebuild -project Feather.xcodeproj \
+  -scheme Feather -configuration Release \
+  -derivedDataPath build build</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" id="faq">
+  <div class="wrap narrow">
+    <h2 class="section-title reveal">Questions</h2>
+    <div class="faq">
+      <details class="reveal"><summary>Is Feather free?</summary><p>Yes. It is open source under the MIT license, with no accounts, ads or paid tier.</p></details>
+      <details class="reveal"><summary>Is it safe to run an app macOS can&rsquo;t verify?</summary><p>macOS shows that warning because Apple hasn&rsquo;t reviewed the app, not because anything was found wrong with it. The honest answer is that you are trusting an individual developer. You can check the SHA-256 shown above, read every line of the source, or build Feather yourself with the steps above. Updates are signed with a key only the developer holds.</p></details>
+      <details class="reveal"><summary>Is it built on Chrome or Firefox?</summary><p>No. Feather uses WebKit, the same engine as Safari, through Apple&rsquo;s own <code>WKWebView</code>. The browser around it is written in Swift and SwiftUI.</p></details>
+      <details class="reveal"><summary>What does Feather send over the network?</summary><p>The pages you open. It also downloads the small icon of each site you visit, to show it in your tabs, and asks GitHub for the newest release about once a day (you can switch that off in Settings). The address bar searches Google. There are no analytics, accounts or telemetry. Tabs, history and bookmarks stay on your Mac.</p></details>
+      <details class="reveal"><summary>Will it support extensions or passwords?</summary><p>Not yet. A password manager, ad and tracker blocking, private browsing and extensions are all on the list, in no promised order.</p></details>
+      <details class="reveal"><summary>Why only Apple silicon and macOS 14?</summary><p>It is built and tested on a single Apple silicon Mac, and Feather doesn&rsquo;t offer an Intel build yet. It is meant to run on macOS 14 or later but hasn&rsquo;t been tried on other versions.</p></details>
+      <details class="reveal"><summary>Is it lighter than Safari or Chrome?</summary><p>It is designed to be easy on memory, with unloading of tabs you aren&rsquo;t using, but nobody has measured it against other browsers yet. Until that is done, Feather makes no claim.</p></details>
+      <details class="reveal"><summary>How do updates work, and can I trust them?</summary><p>Each release carries a manifest signed with a private key kept only by the developer. Feather has the matching public key built in and ignores anything that doesn&rsquo;t verify, so a compromised download page alone can&rsquo;t push an update. A small helper installs it after checking everything again, and rolls back if the new version doesn&rsquo;t start. See the <a href="https://github.com/lumenworksco/-Feather#updates" rel="noopener">README</a> for the details.</p></details>
+      <details class="reveal"><summary>I found a bug, or a security problem.</summary><p>Bugs are welcome as <a href="https://github.com/lumenworksco/-Feather/issues" rel="noopener">issues on GitHub</a>. For security problems, please use GitHub&rsquo;s private <em>Report a vulnerability</em> option on the repository&rsquo;s Security tab instead of a public issue.</p></details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-brand">
+      <img src="assets/icon-512.png" width="40" height="40" alt="">
+      <div><strong>Feather</strong><span>A small, calm browser for your Mac.</span></div>
+    </div>
+    <nav aria-label="Project links">
+      <a href="https://github.com/lumenworksco/-Feather" rel="noopener">Source on GitHub</a>
+      <a href="https://github.com/lumenworksco/-Feather/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/lumenworksco/-Feather/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+      <a href="https://github.com/lumenworksco/-Feather/blob/main/SECURITY.md" rel="noopener">Security policy</a>
+      <a href="https://github.com/lumenworksco/-Feather/issues" rel="noopener">Report a bug</a>
+      <a href="https://github.com/lumenworksco/-Feather/blob/main/LICENSE" rel="noopener">MIT license</a>
+    </nav>
+    <p class="legal">&copy; Florian Braun. Feather is an independent project and is not affiliated with or endorsed by Apple Inc. Mac, macOS, Safari and WebKit are trademarks of Apple Inc. YubiKey is a trademark of Yubico. This page loads no trackers, fonts or third-party scripts; its only request is to GitHub, to show the latest version.</p>
+  </div>
+</footer>
+
+</body>
+</html>
