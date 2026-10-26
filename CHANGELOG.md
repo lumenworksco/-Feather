@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.5-alpha
+- The start page now shows up to **20** bookmarks (it showed 12), in rows of five, and scrolls when the window is too short to show them all. The Bookmarks menu always listed every bookmark.
+
 ## 0.1.4-alpha
 - The automatic update check no longer depends on a timer alone (macOS slows timers of background apps): it also runs when you switch back to Feather, and logs why a check ran or was skipped. This is the first version that can be reached by a real automatic update from 0.1.3.
 

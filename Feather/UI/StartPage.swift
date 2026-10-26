@@ -7,7 +7,27 @@ struct StartPage: View {
     @ObservedObject var history: History
     let favicons: Favicons
 
+    /// How many bookmarks the start page shows (the Bookmarks menu always lists all of them).
+    static let maxTiles = 20
+
     var body: some View {
+        // Centered when it fits; scrolls when the window is too short for all the tiles.
+        GeometryReader { geo in
+            ScrollView {
+                content.frame(minHeight: geo.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.automatic)
+        }
+        .background {
+            ZStack {
+                Rectangle().fill(.background)
+                RadialGradient(colors: [Brand.accent.opacity(0.13), .clear], center: UnitPoint(x: 0.5, y: 0.12), startRadius: 0, endRadius: 560)
+            }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 30) {
             VStack(spacing: 12) {
                 Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 80, height: 80).reveal(delay: 0)
@@ -21,10 +41,10 @@ struct StartPage: View {
 
             if !bookmarks.items.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 14)], spacing: 16) {
-                    ForEach(Array(bookmarks.items.prefix(12).enumerated()), id: \.element.id) { index, b in
+                    ForEach(Array(bookmarks.items.prefix(Self.maxTiles).enumerated()), id: \.element.id) { index, b in
                         BookmarkTile(bookmark: b, color: Theme.palette[index % Theme.palette.count], icon: b.url.host.flatMap { favicons.cached(host: $0) }) { tab.open(b.url) }
                             .contextMenu { Button("Remove Bookmark") { Theme.animate { bookmarks.remove(b) } } }
-                            .reveal(delay: 0.16 + Double(index) * 0.035)
+                            .reveal(delay: 0.16 + Double(min(index, 12)) * 0.035)
                     }
                 }
                 .frame(maxWidth: 540)
@@ -41,13 +61,7 @@ struct StartPage: View {
             }
         }
         .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            ZStack {
-                Rectangle().fill(.background)
-                RadialGradient(colors: [Brand.accent.opacity(0.13), .clear], center: UnitPoint(x: 0.5, y: 0.12), startRadius: 0, endRadius: 560)
-            }
-        }
+        .frame(maxWidth: .infinity)
     }
 
     /// Up to 5 most recent distinct hosts.
