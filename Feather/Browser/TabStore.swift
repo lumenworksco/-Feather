@@ -57,7 +57,11 @@ enum AddressFormat {
 /// Owns the tab list and selection, the shared WebKit configuration, and the app's local data.
 @MainActor
 final class TabStore: ObservableObject {
-    @Published private(set) var tabs: [Tab] = []
+    // Settable from TabGroups.swift (the grouping operations); everything else goes through the methods below.
+    @Published var tabs: [Tab] = []
+    @Published var groups: [TabGroup] = []
+    /// The group whose name is being edited in the sidebar.
+    @Published var renamingGroup: UUID?
     @Published private(set) var selectedID: Tab.ID?
     /// The selected tab's URL, published here so the single, long-lived address field can follow it without being rebuilt per tab.
     @Published private(set) var selectedURL: URL?
@@ -199,6 +203,7 @@ final class TabStore: ObservableObject {
         let webView = WKWebView(frame: WebViewMetrics.initialFrame, configuration: configuration)
         let tab = Tab(store: self)
         tab.attach(webView, restore: false)
+        tab.groupID = opener.groupID              // a link opened from a grouped tab stays in the group
         let pinnedCount = tabs.filter(\.isPinned).count
         tabs.insert(tab, at: max((tabs.firstIndex { $0 === opener } ?? tabs.count - 1) + 1, pinnedCount))   // never into the pinned group
         if select { self.select(tab.id) } else { tabsChanged() }
@@ -232,7 +237,10 @@ final class TabStore: ObservableObject {
         if let wv = tabs.first(where: { $0.id == id })?.webView { webauthn.cancel(webView: wv) }
         guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: i)
-        if let closed = tab.close() {
+        let closedGroup = group(tab.groupID)
+        dropEmptyGroups(tab.groupID)
+        if var closed = tab.close() {
+            closed.group = closedGroup
             closedTabs.append(closed)
             if closedTabs.count > 10 { closedTabs.removeFirst() }
         }
@@ -248,7 +256,12 @@ final class TabStore: ObservableObject {
         let tab = Tab(url: closed.url, title: closed.title, store: self)
         tab.savedState = closed.state
         tab.isPinned = closed.pinned
-        tabs.insert(tab, at: closed.pinned ? tabs.filter(\.isPinned).count : tabs.count)
+        if !closed.pinned, let g = closed.group {
+            if group(g.id) == nil { groups.append(g) }       // the group disappeared when its last tab closed: bring it back
+            tab.groupID = g.id
+        }
+        let index = tab.groupID.flatMap { id in tabs.lastIndex { $0.groupID == id }.map { $0 + 1 } }
+        tabs.insert(tab, at: index ?? (closed.pinned ? tabs.filter(\.isPinned).count : tabs.count))
         select(tab.id)
     }
 
@@ -259,7 +272,10 @@ final class TabStore: ObservableObject {
         guard tab.isPinned != pinned, let i = tabs.firstIndex(where: { $0 === tab }) else { return }
         tabs.remove(at: i)
         tab.isPinned = pinned
+        let oldGroup = tab.groupID
+        if pinned { tab.groupID = nil }                          // pinned tabs are never in a group
         tabs.insert(tab, at: tabs.filter(\.isPinned).count)      // the tab is out of the array here: end of the pinned group / top of the rest
+        dropEmptyGroups(oldGroup)
         tabsChanged()
     }
 
@@ -274,7 +290,11 @@ final class TabStore: ObservableObject {
         let pinnedCount = tabs.filter(\.isPinned).count          // the tab itself is out of the array here
         var index = target.flatMap { t in tabs.firstIndex { $0 === t } } ?? (pinned ? pinnedCount : tabs.count)
         index = pinned ? min(index, pinnedCount) : max(index, pinnedCount)
+        // Dropped before a grouped tab, a tab joins that group; dropped anywhere else it is outside every group.
+        let oldGroup = tab.groupID
+        tab.groupID = pinned ? nil : target?.groupID
         tabs.insert(tab, at: index)
+        dropEmptyGroups(oldGroup)
         tabsChanged()
     }
 
@@ -366,11 +386,12 @@ final class TabStore: ObservableObject {
             if tab.isLoaded && (refresh || tab.stateDirty) { tab.refreshState() }
             var data = tab.sessionState
             if let d = data, d.count > Self.maxStateBytes { data = nil }
-            return SessionTab(url: tab.url, title: tab.title, state: data, pinned: tab.isPinned ? true : nil)
+            return SessionTab(url: tab.url, title: tab.title, state: data, pinned: tab.isPinned ? true : nil, group: tab.groupID?.uuidString)
         }
         return Session(tabs: entries,
                        selected: tabs.firstIndex { $0.id == selectedID } ?? 0,
-                       closed: closedTabs.suffix(10).map { SavedClosed(url: $0.url, title: $0.title, pinned: $0.pinned ? true : nil) })
+                       closed: closedTabs.suffix(10).map { SavedClosed(url: $0.url, title: $0.title, pinned: $0.pinned ? true : nil, group: $0.group?.id.uuidString) },
+                       groups: groups.isEmpty ? nil : groups.map(\.saved))
     }
 
     func saveSessionNow(refreshStates: Bool = false) {
@@ -420,14 +441,17 @@ final class TabStore: ObservableObject {
             report("unreadable", 0, false, quarantined)
             if banner == nil { banner = .unreadable }
         case .loaded(let session, let source, let partial, let quarantined, _):
+            groups = (session.groups ?? []).compactMap(TabGroup.init)
             tabs = session.tabs.map { saved in
                 let tab = Tab(url: saved.url, title: saved.title, store: self)
                 tab.savedState = saved.state
                 tab.isPinned = saved.pinned ?? false
+                tab.groupID = saved.group.flatMap(UUID.init(uuidString:))
                 return tab
             }
             tabs = tabs.filter(\.isPinned) + tabs.filter { !$0.isPinned }
-            closedTabs = (session.closed ?? []).map { ClosedTab(url: $0.url, title: $0.title, state: nil, pinned: $0.pinned ?? false) }
+            enforceGroupOrder()
+            closedTabs = (session.closed ?? []).map { ClosedTab(url: $0.url, title: $0.title, state: nil, pinned: $0.pinned ?? false, group: group($0.group.flatMap(UUID.init(uuidString:)))) }
             select(index: session.selected)
             switch source {
             case .primary: report("primary", tabs.count, partial, quarantined)
@@ -459,9 +483,15 @@ final class TabStore: ObservableObject {
             let tab = Tab(url: url, title: saved.title, store: self)
             tab.savedState = saved.state
             tab.isPinned = saved.pinned ?? false
+            // Joins a group that is already open; otherwise the backup's group is created.
+            if !tab.isPinned, let gid = saved.group.flatMap(UUID.init(uuidString:)) {
+                if group(gid) == nil, let g = parsed.session.groups?.compactMap(TabGroup.init).first(where: { $0.id == gid }) { groups.append(g) }
+                if group(gid) != nil { tab.groupID = gid }
+            }
             tabs.insert(tab, at: tab.isPinned ? tabs.filter(\.isPinned).count : tabs.count)
             added.append(tab)
         }
+        enforceGroupOrder()
         if let first = added.first { select(first.id) }
         banner = .info("Opened \(added.count) tab\(added.count == 1 ? "" : "s") from the backup" + (skipped > 0 ? " (\(skipped) already open)." : "."))
         tabsChanged()

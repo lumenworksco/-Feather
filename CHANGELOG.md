@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6-alpha (not released yet)
+- **Tab groups.** Right-click a tab > Add to Group > New Group (or Navigate > Add Tab to New Group). Groups have a name and a color, sit together in the sidebar, fold away by clicking their header, and are saved with your session. Drop a tab on a header to add it; links opened from a grouped tab stay in the group; pinning a tab takes it out. Not yet: dragging a whole group, or putting a tab before a group that is first in the list by dragging.
+- Fixed: a tab that was playing audio kept playing for a while after it was closed (or unloaded). Media is now paused and the page emptied before the web view is released.
+- Security keys: every refused request, and every key plugged in or removed, is now written to the system log (Console, subsystem `dev.feather`, category `webauthn`), so a failed sign-in can be traced.
+
 ## 0.1.5-alpha
 - The start page now shows up to **20** bookmarks (it showed 12), in rows of five, and scrolls when the window is too short to show them all. The Bookmarks menu always listed every bookmark.
 

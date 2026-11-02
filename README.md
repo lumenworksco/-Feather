@@ -13,7 +13,7 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 
 ## Features
 
-- **Sidebar tabs**, with **pinned tabs** as an icon grid at the top. Drag to reorder, drag onto the pin area to pin, drag back to unpin. Hide the sidebar with ⌘S for a compact top bar.
+- **Sidebar tabs**, with **pinned tabs** as an icon grid at the top. Drag to reorder, drag onto the pin area to pin, drag back to unpin. **Tab groups** (right-click a tab): named, colored, foldable sets of tabs. Hide the sidebar with ⌘S for a compact top bar.
 - **One address bar** for URLs and Google searches. It takes focus on every new tab.
 - **Memory-conscious by design.** Blank and restored tabs have no web view at all; pages in tabs you haven't visited are unloaded according to a setting (Balanced / Memory Saver / Aggressive). A tab is never unloaded while it is loading, playing media, using the camera or microphone, on an excluded site, or has text typed into a form.
 - **Crash-safe sessions.** Your tabs, pins, selection, and each tab's back/forward history and scroll position are saved within about a quarter of a second of any change and restored after a quit, crash or `kill -9`, with backups and safeguards against a damaged session file (see [Keeping your tabs safe](#keeping-your-tabs-safe)). Only the selected tab loads at launch. If WebKit's page process dies, the tab reloads itself.

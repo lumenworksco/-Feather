@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.hid
+import os
 
 /// Talks to FIDO security keys over USB HID. Matches only the FIDO usage page (0xF1D0), so the key's keyboard
 /// interface (used for one-time codes) is never opened and no Input Monitoring permission is involved.
@@ -53,6 +54,7 @@ final class HIDTransport: KeyTransport {
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: CTAPHID.packetSize)
         buffers.append(buffer)
         let device = KeyDevice(id: nextID, name: name)
+        Self.log.notice("security key attached: \(name, privacy: .public)")
         nextID += 1
         refs[device.id] = ref
         devices.append(device)
@@ -66,6 +68,7 @@ final class HIDTransport: KeyTransport {
     }
 
     private func removed(_ ref: IOHIDDevice) {
+        Self.log.notice("security key removed")
         if let id = refs.first(where: { $0.value === ref })?.key { refs[id] = nil; devices.removeAll { $0.id == id } }
         onChange?()
     }
@@ -79,5 +82,10 @@ final class HIDTransport: KeyTransport {
         return r == kIOReturnSuccess
     }
 
-    static func note(_ s: String) { FileHandle.standardError.write(Data(("KEY " + s + "\n").utf8)) }
+    private static let log = Logger(subsystem: "dev.feather", category: "webauthn")
+    /// Goes to the unified log (an app started from Finder has no stderr) and, for the `--keyprobe` command line, to stderr too.
+    static func note(_ s: String) {
+        log.error("\(s, privacy: .public)")
+        FileHandle.standardError.write(Data(("KEY " + s + "\n").utf8))
+    }
 }

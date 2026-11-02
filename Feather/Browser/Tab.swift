@@ -15,6 +15,7 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var progress = 0.0
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
+    @Published var groupID: UUID?                        // the tab group it belongs to (never set on pinned tabs)
     @Published var isPinned = false                      // pinned tabs live in the sidebar's icon grid and sort first
     @Published private(set) var failure: String?
     @Published private(set) var notice: String?          // brief, non-blocking message (e.g. "page reloaded")
@@ -119,6 +120,10 @@ final class Tab: NSObject, ObservableObject, Identifiable {
         observations = []
         guard let wv = webView else { return }
         wv.stopLoading()
+        // Releasing the view does not stop a page that is playing audio at once: it kept playing until WebKit got around to freeing it.
+        // Pause media and replace the page with an empty one, so closing or unloading a tab always silences it. (Session state was captured before this.)
+        wv.pauseAllMediaPlayback(completionHandler: nil)
+        wv.loadHTMLString("", baseURL: nil)
         wv.navigationDelegate = nil
         wv.uiDelegate = nil
         wv.removeFromSuperview()
@@ -243,6 +248,7 @@ struct ClosedTab {
     let title: String
     let state: Any?
     var pinned = false
+    var group: TabGroup?
 }
 
 // MARK: - WKNavigationDelegate

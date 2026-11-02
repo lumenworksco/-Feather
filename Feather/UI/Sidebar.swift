@@ -52,12 +52,18 @@ struct Sidebar: View {
 
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(store.tabs.filter { !$0.isPinned }) { tab in
-                        TabRow(tab: tab, store: store, selected: tab.id == store.selectedID, selection: selection)
-                            .transition(Theme.rowTransition)
+                    let items = store.sidebarItems
+                    ForEach(items) { item in
+                        switch item {
+                        case .header(let group, let count):
+                            GroupHeader(group: group, count: count, store: store).transition(Theme.rowTransition)
+                        case .tab(let tab, let group):
+                            TabRow(tab: tab, store: store, group: group, selected: tab.id == store.selectedID, selection: selection)
+                                .transition(Theme.rowTransition)
+                        }
                     }
                 }
-                .motion(Theme.spring, value: store.tabs.map(\.id))
+                .motion(Theme.spring, value: store.sidebarItems.map(\.id))
             }
             .scrollIndicators(.never)
             .dropDestination(for: TabDrag.self) { items, _ in
@@ -162,6 +168,7 @@ private struct TabIcon: View {
 private struct TabRow: View {
     @ObservedObject var tab: Tab
     let store: TabStore
+    var group: TabGroup?
     let selected: Bool
     let selection: Namespace.ID
     @State private var hovering = false
@@ -177,9 +184,12 @@ private struct TabRow: View {
                     .lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 10)
+            .padding(.leading, group == nil ? 10 : 18)
             .padding(.trailing, selected || hovering ? 32 : 10)         // leave room for the close button so the title never runs under it
             .frame(height: 32)
+            .overlay(alignment: .leading) {
+                if let group { Capsule().fill(group.color.color).frame(width: 3).padding(.vertical, 6).padding(.leading, 5) }
+            }
             .background {
                 ZStack {
                     if hovering && !selected { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.07)) }
@@ -226,11 +236,84 @@ private struct CloseButton: View {
     }
 }
 
+/// A group's title row: fold/unfold, color, name (editable), and the number of tabs. Tabs can be dropped on it to join the group.
+private struct GroupHeader: View {
+    let group: TabGroup
+    let count: Int
+    @ObservedObject var store: TabStore
+    @State private var hovering = false
+    @State private var dropTargeted = false
+    @State private var draft = ""
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).frame(width: 12)
+                .rotationEffect(.degrees(group.isCollapsed ? 0 : 90))
+                .foregroundStyle(.secondary)
+            Circle().fill(group.color.color).frame(width: 9, height: 9)
+            if store.renamingGroup == group.id {
+                TextField("Group name", text: $draft)
+                    .textFieldStyle(.plain).font(.system(size: 12.5, weight: .semibold))
+                    .focused($editing)
+                    .onSubmit { finishRename(save: true) }
+                    .onExitCommand { finishRename(save: false) }
+                    .onAppear { draft = group.name; editing = true }
+                    .onChange(of: editing) { _, now in if !now, store.renamingGroup == group.id { finishRename(save: true) } }
+            } else {
+                Text(group.displayName).font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(group.name.isEmpty ? Color.secondary : Color.primary.opacity(0.85)).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if group.isCollapsed { Text("\(count)").font(.system(size: 11)).foregroundStyle(.secondary) }
+        }
+        .padding(.horizontal, 8).frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(group.color.color.opacity(dropTargeted ? 0.28 : hovering ? 0.16 : 0.10)))
+        .contentShape(Rectangle())
+        .onTapGesture { if store.renamingGroup != group.id { Theme.animate { store.toggleCollapsed(group.id) } } }
+        .onHover { hovering = $0 }
+        .motion(Theme.quick, value: hovering)
+        .motion(Theme.quick, value: dropTargeted)
+        .dropDestination(for: TabDrag.self) { items, _ in
+            guard let item = items.first, let dragged = store.tab(withID: item.id) else { return false }
+            Theme.animate { store.addToGroup(dragged, group.id) }
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .contextMenu {
+            Button("Rename Group") { store.renamingGroup = group.id }
+            Menu("Color") {
+                ForEach(GroupColor.allCases, id: \.self) { c in
+                    Button { store.setColor(group.id, c) } label: { Text(c.title + (c == group.color ? "  ✓" : "")) }
+                }
+            }
+            Button(group.isCollapsed ? "Expand Group" : "Collapse Group") { Theme.animate { store.toggleCollapsed(group.id) } }
+            Divider()
+            Button("Ungroup") { Theme.animate { store.ungroup(group.id) } }
+            Button("Close Group") { Theme.animate { store.closeGroup(group.id) } }
+        }
+        .help(group.displayName)
+    }
+
+    private func finishRename(save: Bool) {
+        if save { store.rename(group.id, to: draft) }
+        store.renamingGroup = nil
+    }
+}
+
 private struct TabMenu: View {
     let tab: Tab
     let store: TabStore
     var body: some View {
         Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { Theme.animate { store.togglePin(tab) } }
+        if !tab.isPinned {
+            Menu("Add to Group") {
+                Button("New Group") { Theme.animate { store.newGroup(with: tab) } }
+                let others = store.groups.filter { $0.id != tab.groupID }
+                if !others.isEmpty { Divider() }
+                ForEach(others) { g in Button(g.displayName) { Theme.animate { store.addToGroup(tab, g.id) } } }
+            }
+            if tab.groupID != nil { Button("Remove from Group") { Theme.animate { store.removeFromGroup(tab) } } }
+        }
         Button("Reload") { tab.reloadOrStop() }
         if let host = tab.url?.host {
             Button("Never Unload \(host)") { store.settings.addExcluded(host) }

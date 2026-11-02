@@ -5,8 +5,8 @@ import os
 
 /// Everything needed to put the user's tabs back. `state` is WKWebView.interactionState (back/forward list + scroll
 /// position). Text typed into web forms and a page's JavaScript state are NOT saved.
-struct SessionTab: Codable { var url: URL?; var title: String; var state: Data?; var pinned: Bool? }
-struct SavedClosed: Codable { var url: URL; var title: String; var pinned: Bool? }
+struct SessionTab: Codable { var url: URL?; var title: String; var state: Data?; var pinned: Bool?; var group: String? }
+struct SavedClosed: Codable { var url: URL; var title: String; var pinned: Bool?; var group: String? }
 
 struct Session: Codable {
     /// Bumped when the format changes. Files from before versioning have no field and are read as version 1.
@@ -15,11 +15,13 @@ struct Session: Codable {
     var tabs: [SessionTab]
     var selected: Int
     var closed: [SavedClosed]?
+    /// Tab groups. Optional and without a version bump: older builds ignore the field and read the file as before.
+    var groups: [SavedGroup]?
 
     /// What a user would call "the same session": addresses, pins, order and selection, ignoring titles and state blobs.
     /// Used so identical sessions don't produce duplicate backups.
     var signature: String {
-        tabs.map { ($0.url?.absoluteString ?? "-") + ($0.pinned == true ? "*" : "") }.joined(separator: "|") + "#\(selected)"
+        tabs.map { ($0.url?.absoluteString ?? "-") + ($0.pinned == true ? "*" : "") + ($0.group.map { "@" + $0 } ?? "") }.joined(separator: "|") + "#\(selected)"
     }
     var pinnedCount: Int { tabs.filter { $0.pinned == true }.count }
 }
@@ -59,18 +61,25 @@ enum SessionParser {
             if let s = d["state"] as? String {
                 if let decoded = Data(base64Encoded: s) { state = decoded } else { droppedFields += 1 }
             } else if d["state"] != nil, !(d["state"] is NSNull) { droppedFields += 1 }
-            tabs.append(SessionTab(url: url, title: title, state: state, pinned: d["pinned"] as? Bool))
+            var group: String?
+            if let g = d["group"] as? String { group = g } else if d["group"] != nil, !(d["group"] is NSNull) { droppedFields += 1 }
+            tabs.append(SessionTab(url: url, title: title, state: state, pinned: d["pinned"] as? Bool, group: group))
         }
         guard !tabs.isEmpty else { return nil }
 
         var closed: [SavedClosed] = []
         for raw in (root["closed"] as? [Any]) ?? [] {
             guard let d = raw as? [String: Any], let s = d["url"] as? String, let url = URL(string: s) else { droppedFields += 1; continue }
-            closed.append(SavedClosed(url: url, title: (d["title"] as? String) ?? "", pinned: d["pinned"] as? Bool))
+            closed.append(SavedClosed(url: url, title: (d["title"] as? String) ?? "", pinned: d["pinned"] as? Bool, group: d["group"] as? String))
+        }
+        var groups: [SavedGroup] = []
+        for raw in (root["groups"] as? [Any]) ?? [] {
+            guard let d = raw as? [String: Any], let id = d["id"] as? String, UUID(uuidString: id) != nil else { droppedFields += 1; continue }
+            groups.append(SavedGroup(id: id, name: (d["name"] as? String) ?? "", color: d["color"] as? String, collapsed: d["collapsed"] as? Bool))
         }
         let selected = min(max((root["selected"] as? Int) ?? 0, 0), tabs.count - 1)
         let version = (root["version"] as? Int) ?? 1
-        return ParsedSession(session: Session(version: version, tabs: tabs, selected: selected, closed: closed),
+        return ParsedSession(session: Session(version: version, tabs: tabs, selected: selected, closed: closed, groups: groups.isEmpty ? nil : groups),
                              version: version, droppedTabs: droppedTabs, droppedFields: droppedFields)
     }
 }

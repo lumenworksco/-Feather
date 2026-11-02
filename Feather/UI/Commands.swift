@@ -48,6 +48,8 @@ struct BrowserCommands: Commands {
             Button("Forward") { store.selected?.goForward() }.keyboardShortcut("]")
             Button("Reload / Stop") { store.selected?.reloadOrStop() }.keyboardShortcut("r")
             Button("Pin / Unpin Tab") { if let tab = store.selected { store.togglePin(tab) } }.keyboardShortcut("p", modifiers: [.command, .shift])
+            Button("Add Tab to New Group") { if let tab = store.selected, !tab.isPinned { store.newGroup(with: tab) } }
+            Button("Remove Tab from Group") { if let tab = store.selected { store.removeFromGroup(tab) } }
             Divider()
             Button("Next Tab") { store.selectNext(1) }.keyboardShortcut("]", modifiers: [.command, .shift])
             Button("Previous Tab") { store.selectNext(-1) }.keyboardShortcut("[", modifiers: [.command, .shift])

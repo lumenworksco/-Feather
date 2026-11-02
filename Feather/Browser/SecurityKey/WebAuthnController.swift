@@ -47,6 +47,7 @@ struct KeyPrompt: Equatable {
     func handle(_ body: [String: Any], origin: CallerOrigin, webView: WKWebView?, isMainFrame: Bool) async -> [String: Any] {
         let op = body["op"] as? String ?? "", id = body["id"] as? String ?? ""
         if op == "cancel" { cancel(id: id, reason: .navigation); return ["ok": true] }
+        Self.log.notice("\(op, privacy: .public) request arrived from \(origin.string, privacy: .public) (main frame: \(isMainFrame, privacy: .public))")
         do {
             guard PublicSuffix.shared.isLoaded else { throw WebAuthnError.notAllowed("Security keys are unavailable: the site-name list could not be loaded.") }
             guard origin.isSecureContext else { throw WebAuthnError.security("Security keys need a secure (https) page.") }
@@ -81,8 +82,11 @@ struct KeyPrompt: Equatable {
             do { let r = try await task.value; Self.log.info("\(op, privacy: .public) succeeded"); return ["ok": true, "result": r] }
             catch { let e = map(error, a); Self.log.error("\(op, privacy: .public) failed: \(e.name, privacy: .public) \(e.message, privacy: .public) [\(String(describing: error), privacy: .public)]"); throw e }
         } catch let e as WebAuthnError {
+            // Every refusal is logged, including those from the checks before the key is touched, so a failed sign-in can be traced.
+            Self.log.error("\(op, privacy: .public) refused for \(origin.string, privacy: .public): \(e.name, privacy: .public) \(e.message, privacy: .public)")
             return ["ok": false, "error": ["name": e.name, "message": e.message]]
         } catch {
+            Self.log.error("\(op, privacy: .public) failed for \(origin.string, privacy: .public): \(String(describing: error), privacy: .public)")
             return ["ok": false, "error": ["name": "NotAllowedError", "message": "\(error)"]]
         }
     }

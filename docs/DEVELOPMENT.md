@@ -10,6 +10,9 @@ tests/                     shell and Python test suites
 bench/                     memory/CPU benchmark harness (see ../BENCHMARKING.md)
 ```
 
+## Tab groups (`TabGroups.swift`)
+A `Tab` has an optional `groupID`; `TabStore.groups` holds each group's name, color and folded state. Members are kept next to each other in `tabs` (`enforceGroupOrder()` after restore, `move` and `addToGroup` for edits); pinned tabs are never in a group; a group with no tabs is removed. The session file gets optional `groups` and per-tab `group` fields, **without a version bump**, so an older build still reads the file (it just ignores groups). Closed tabs remember their group so Reopen Closed Tab can bring it back.
+
 ## Persistence (`SessionStore.swift`, `Storage.swift`)
 - Files in the profile folder: `session.json`, `session.prev.json`, `SessionBackups/session-<UTC time>-t<tabs>-p<pinned>.json` (time and counts are in the name, so the menu never opens files), `SessionQuarantine/` (newest 10 damaged copies), `profile.lock` (`flock`, released by the OS if the process dies).
 - Write path (`DurableFile`): temp file, `F_FULLFSYNC`, read back and compare, `rename`, directory fsync. The session is validated (re-parsed) *before* writing. The previous copy is written from memory first, so at every instant one complete session file exists. A save is only remembered as done after it really succeeded, so failures retry. Encoding uses sorted keys so "unchanged" can be detected (idle means zero writes).

@@ -328,6 +328,40 @@ enum SelfTest {
         if let rest = store.tabs.first(where: { $0.url?.host == "example.org" }) { store.close(rest.id) }
         store.select(home.id); await pause(0.4)
 
+        // --- Tab groups: members stay together, groups vanish when empty, pinning leaves the group, closed tabs come back into it.
+        let ga = store.newTab(url: URL(string: "https://example.com")!), gb = store.newTab(url: URL(string: "https://example.org")!), gc = store.newTab(url: URL(string: "https://www.iana.org")!)
+        let grp = store.newGroup(with: ga)
+        store.renamingGroup = nil
+        check("a new group holds the tab, which stays where it was", ga.groupID == grp.id && store.tabs.firstIndex { $0 === ga } == store.tabs.firstIndex { $0 === gb }.map { $0 - 1 })
+        store.addToGroup(gc, grp.id)
+        check("adding a tab puts it right after the group's last tab", store.tabs.firstIndex { $0 === gc } == store.tabs.firstIndex { $0 === ga }.map { $0 + 1 })
+        store.move(gb, before: gc, pinned: false)
+        check("dropping before a grouped tab joins the group, and members stay together", gb.groupID == grp.id && store.members(of: grp.id).count == 3
+              && store.tabs.firstIndex { $0 === gb } == store.tabs.firstIndex { $0 === ga }.map { $0 + 1 })
+        store.toggleCollapsed(grp.id); store.select(home.id)
+        check("a folded group shows only its header", store.sidebarItems.filter { if case .tab(let t, _) = $0 { return t.groupID == grp.id }; return false }.isEmpty
+              && store.sidebarItems.contains { if case .header(let g, _) = $0 { return g.id == grp.id }; return false })
+        store.select(gb.id)
+        check("the selected tab of a folded group stays visible", store.sidebarItems.contains { if case .tab(let t, _) = $0 { return t === gb }; return false })
+        store.select(home.id); store.toggleCollapsed(grp.id)
+        store.togglePin(gb)
+        check("pinning a tab takes it out of its group", gb.isPinned && gb.groupID == nil && store.members(of: grp.id).count == 2)
+        store.togglePin(gb)
+        store.removeFromGroup(gc)
+        check("removing a tab from its group leaves it right after the group", gc.groupID == nil && store.tabs.firstIndex { $0 === gc } == store.tabs.firstIndex { $0 === ga }.map { $0 + 1 })
+        let aSession = Session(tabs: [SessionTab(url: URL(string: "https://a.com/"), title: "a", state: nil, pinned: nil, group: grp.id.uuidString), SessionTab(url: URL(string: "https://b.com/"), title: "b", state: nil, pinned: nil, group: nil)],
+                               selected: 0, closed: nil, groups: [grp.saved])
+        let rt = (try? JSONEncoder().encode(aSession)).flatMap(SessionParser.parse)
+        check("groups survive a save and load", rt?.session.tabs.first?.group == grp.id.uuidString && rt?.session.groups?.first?.id == grp.id.uuidString && rt?.isPartial == false)
+        store.close(ga.id)
+        check("closing a group's last tab removes the group", store.group(grp.id) == nil && store.groups.isEmpty)
+        store.reopenClosed(); await pause(0.3)
+        check("reopening it brings the group back", store.tabs.first(where: { $0.url?.host == "example.com" })?.groupID != nil && store.groups.count == 1)
+        if let g = store.groups.first { store.closeGroup(g.id) }
+        check("closing a group closes its tabs", store.groups.isEmpty && store.tabs.allSatisfy { $0.groupID == nil })
+        for t in [gb, gc] { store.close(t.id) }
+        store.select(home.id); await pause(0.4)
+
         // --- Drag and drop semantics (the store operation the sidebar's drop handlers call).
         let da = store.newTab(url: URL(string: "https://example.com")!), db = store.newTab(url: URL(string: "https://example.org")!), dc = store.newTab(url: URL(string: "https://www.iana.org")!)
         func order() -> [Tab] { store.tabs.filter { $0 === da || $0 === db || $0 === dc } }
