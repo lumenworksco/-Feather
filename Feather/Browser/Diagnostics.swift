@@ -426,6 +426,33 @@ enum SelfTest {
             check("matching ignores case", q("INBOX").first?.kind == .tab(t2))
         }
 
+        // --- Moving whole groups, and a new tab inside a group.
+        do {
+            let x1 = store.newTab(url: URL(string: "https://example.com")!), x2 = store.newTab(url: URL(string: "https://example.org")!)
+            let y1 = store.newTab(url: URL(string: "https://www.iana.org")!), z1 = store.newTab(url: URL(string: "https://www.apple.com")!)
+            let gx = store.newGroup(with: x1); store.addToGroup(x2, gx.id)
+            let gy = store.newGroup(with: y1); store.renamingGroup = nil
+            let mine: Set<UUID> = [x1.id, x2.id, y1.id, z1.id]
+            func seq() -> [Tab] { store.tabs.filter { mine.contains($0.id) } }
+            check("setup: group X, then group Y, then a loose tab", seq().map(\.id) == [x1.id, x2.id, y1.id, z1.id])
+            store.moveGroup(gy.id, before: x2)
+            check("moving a group before a tab inside another group puts it before that whole group", seq().map(\.id) == [y1.id, x1.id, x2.id, z1.id])
+            store.moveGroup(gx.id, before: nil)
+            check("moving a group to the end keeps its tabs together", seq().map(\.id) == [y1.id, z1.id, x1.id, x2.id])
+            store.moveGroup(gx.id, before: store.tabs.first { !$0.isPinned })
+            check("a group moved to the top stays out of the pinned area", store.tabs.prefix(while: \.isPinned).count == store.tabs.filter(\.isPinned).count && store.tabs.first(where: { !$0.isPinned })?.groupID == gx.id)
+            store.moveToTop(z1)
+            check("moveToTop puts a loose tab above the first group", store.tabs.first(where: { !$0.isPinned }) === z1 && z1.groupID == nil)
+            store.toggleCollapsed(gx.id)
+            let fresh = store.newTab(in: gx.id)
+            check("a new tab in a folded group unfolds it and lands after the group's last tab", fresh?.groupID == gx.id && store.group(gx.id)?.isCollapsed == false
+                  && store.tabs.lastIndex { $0.groupID == gx.id } == store.tabs.firstIndex { $0 === fresh })
+            if let fresh { store.close(fresh.id) }
+            for g in [gx.id, gy.id] { store.closeGroup(g) }
+            store.close(z1.id)
+            store.select(home.id); await pause(0.4)
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {

@@ -6,7 +6,8 @@ extension UTType { static let featherTab = UTType(exportedAs: "dev.feather.tab")
 /// What is dragged between sidebar rows: just the tab's id, in a type only Feather understands
 /// (so dropping a tab on another app does nothing, instead of pasting an id).
 struct TabDrag: Codable, Transferable {
-    let id: UUID
+    let id: UUID                  // a tab's id, or a group's when `isGroup` is set (tab drop targets then find no such tab and refuse it)
+    var isGroup: Bool?
     static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .featherTab) }
 }
 
@@ -67,7 +68,9 @@ struct Sidebar: View {
             }
             .scrollIndicators(.never)
             .dropDestination(for: TabDrag.self) { items, _ in
-                guard let item = items.first, let dragged = store.tab(withID: item.id) else { return false }
+                guard let item = items.first else { return false }
+                if item.isGroup == true { Theme.animate { store.moveGroup(item.id, before: nil) }; return true }
+                guard let dragged = store.tab(withID: item.id) else { return false }
                 Theme.animate { store.move(dragged, before: nil, pinned: false) }
                 return true
             }
@@ -122,6 +125,7 @@ struct SidebarToggle: View {
 private struct NewTabRow: View {
     let store: TabStore
     @State private var hovering = false
+    @State private var dropTargeted = false
 
     var body: some View {
         Button { store.newTab() } label: {
@@ -140,6 +144,16 @@ private struct NewTabRow: View {
         .hoverFill(radius: 8)
         .onHover { hovering = $0 }
         .motion(Theme.quick, value: hovering)
+        .insertionMark(dropTargeted)
+        // Dropping a tab or group here puts it at the very top of the list, which is the only way to get above a first group.
+        .dropDestination(for: TabDrag.self) { items, _ in
+            guard let item = items.first else { return false }
+            if item.isGroup == true { Theme.animate { store.moveGroup(item.id, before: store.tabs.first { !$0.isPinned && $0.groupID != item.id }) }; return true }
+            guard let dragged = store.tab(withID: item.id) else { return false }
+            Theme.animate { store.moveToTop(dragged) }
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .help("New Tab (⌘T). Drop a tab or group here to move it to the top.")
     }
 }
 
@@ -217,7 +231,9 @@ private struct TabRow: View {
         .motion(Theme.quick, value: hovering)
         .draggable(TabDrag(id: tab.id))
         .dropDestination(for: TabDrag.self) { items, _ in
-            guard let item = items.first, let dragged = store.tab(withID: item.id) else { return false }
+            guard let item = items.first else { return false }
+            if item.isGroup == true { Theme.animate { store.moveGroup(item.id, before: tab) }; return true }
+            guard let dragged = store.tab(withID: item.id) else { return false }
             Theme.animate { store.move(dragged, before: tab, pinned: false) }
             return true
         } isTargeted: { dropTargeted = $0 }
@@ -288,7 +304,11 @@ private struct GroupHeader: View {
                     .foregroundStyle(group.name.isEmpty ? Color.secondary : Color.primary.opacity(0.85)).lineLimit(1)
             }
             Spacer(minLength: 0)
-            if group.isCollapsed { Text("\(count)").font(.system(size: 11)).foregroundStyle(.secondary) }
+            if group.isCollapsed && !hovering { Text("\(count)").font(.system(size: 11)).foregroundStyle(.secondary) }
+            if hovering && store.renamingGroup != group.id {
+                Button { Theme.animate { store.newTab(in: group.id) } } label: { Image(systemName: "plus").font(.system(size: 10, weight: .bold)).frame(width: 18, height: 18) }
+                    .buttonStyle(PressStyle(scale: 0.88)).foregroundStyle(.secondary).help("New Tab in Group")
+            }
         }
         .padding(.horizontal, 8).frame(height: 28)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(group.color.color.opacity(dropTargeted ? 0.28 : hovering ? 0.16 : 0.10)))
@@ -297,12 +317,16 @@ private struct GroupHeader: View {
         .onHover { hovering = $0 }
         .motion(Theme.quick, value: hovering)
         .motion(Theme.quick, value: dropTargeted)
+        .draggable(TabDrag(id: group.id, isGroup: true))
         .dropDestination(for: TabDrag.self) { items, _ in
-            guard let item = items.first, let dragged = store.tab(withID: item.id) else { return false }
+            guard let item = items.first else { return false }
+            if item.isGroup == true { Theme.animate { store.moveGroup(item.id, before: store.members(of: group.id).first) }; return true }
+            guard let dragged = store.tab(withID: item.id) else { return false }
             Theme.animate { store.addToGroup(dragged, group.id) }
             return true
         } isTargeted: { dropTargeted = $0 }
         .contextMenu {
+            Button("New Tab in Group") { Theme.animate { store.newTab(in: group.id) } }
             Button("Rename Group") { store.renamingGroup = group.id }
             Menu("Color") {
                 ForEach(GroupColor.allCases, id: \.self) { c in

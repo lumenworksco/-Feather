@@ -77,6 +77,45 @@ extension TabStore {
         tabsChanged()
     }
 
+    /// A new blank tab at the end of the group (the group is unfolded so the tab is not hidden).
+    @discardableResult
+    func newTab(in groupID: UUID) -> Tab? {
+        guard group(groupID) != nil else { return nil }
+        let tab = Tab(store: self)
+        tab.groupID = groupID
+        tabs.insert(tab, at: tabs.lastIndex { $0.groupID == groupID }.map { $0 + 1 } ?? tabs.count)
+        updateGroup(groupID) { $0.isCollapsed = false }
+        select(tab.id)
+        focusAddress()
+        return tab
+    }
+
+    /// Drag and drop: the whole group goes before `target`, or to the end of the list when `target` is nil. A target inside another
+    /// group means before that group's first tab, so a group is never split; never into the pinned area.
+    func moveGroup(_ id: UUID, before target: Tab?) {
+        let moving = tabs.filter { $0.groupID == id }
+        guard !moving.isEmpty, target?.groupID != id else { return }
+        tabs.removeAll { $0.groupID == id }
+        var index = tabs.count
+        if let target, let t = tabs.firstIndex(where: { $0 === target }) {
+            index = target.groupID.flatMap { g in tabs.firstIndex { $0.groupID == g } } ?? t
+        }
+        tabs.insert(contentsOf: moving, at: max(index, tabs.prefix(while: \.isPinned).count))
+        tabsChanged()
+    }
+
+    /// Drag and drop: the tab goes to the very top of the unpinned tabs, outside every group.
+    func moveToTop(_ tab: Tab) {
+        guard let from = tabs.firstIndex(where: { $0 === tab }) else { return }
+        tabs.remove(at: from)
+        let old = tab.groupID
+        tab.groupID = nil
+        if tab.isPinned { tab.isPinned = false }
+        tabs.insert(tab, at: tabs.prefix(while: \.isPinned).count)
+        dropEmptyGroups(old)
+        tabsChanged()
+    }
+
     /// The tab leaves its group and stays right after it.
     func removeFromGroup(_ tab: Tab) {
         guard let old = tab.groupID else { return }
