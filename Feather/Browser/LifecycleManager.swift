@@ -75,6 +75,15 @@ final class LifecycleManager {
         scheduleIdleTimer()
     }
 
+    /// Unloads these tabs now (a folded tab group), skipping the active tab and any tab `canUnload` vetoes.
+    func unload(_ tabs: [Tab]) async {
+        for tab in tabs {
+            guard tab.isLoaded, tab.id != store.selectedID, await canUnload(tab), tab.isLoaded, tab.id != store.selectedID else { continue }
+            tab.unload()
+            Log.lifecycle.info("unloaded tab of a folded group (\(tab.url?.host ?? "-"))")
+        }
+    }
+
     /// Never discard something the user would notice losing. Anything uncertain (including a web process that
     /// doesn't answer in time) means "keep it".
     private func canUnload(_ tab: Tab) async -> Bool {

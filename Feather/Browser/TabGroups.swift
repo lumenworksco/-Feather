@@ -100,7 +100,12 @@ extension TabStore {
         tabsChanged()
     }
 
-    func toggleCollapsed(_ id: UUID) { updateGroup(id) { $0.isCollapsed.toggle() } }
+    /// Folding a group also unloads its tabs to free their memory (they reload when opened). The selected tab stays, and so does
+    /// anything the lifecycle manager would never discard (typed-in form input, camera or microphone, audio, a pending security key).
+    func toggleCollapsed(_ id: UUID) {
+        updateGroup(id) { $0.isCollapsed.toggle() }
+        if group(id)?.isCollapsed == true { Task { await lifecycle.unload(members(of: id)) } }
+    }
     func rename(_ id: UUID, to name: String) { updateGroup(id) { $0.name = name.trimmingCharacters(in: .whitespacesAndNewlines) } }
     func setColor(_ id: UUID, _ color: GroupColor) { updateGroup(id) { $0.color = color } }
 

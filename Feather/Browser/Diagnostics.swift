@@ -330,6 +330,7 @@ enum SelfTest {
 
         // --- Tab groups: members stay together, groups vanish when empty, pinning leaves the group, closed tabs come back into it.
         let ga = store.newTab(url: URL(string: "https://example.com")!), gb = store.newTab(url: URL(string: "https://example.org")!), gc = store.newTab(url: URL(string: "https://www.iana.org")!)
+        await settle(ga); await settle(gb); await settle(gc)
         let grp = store.newGroup(with: ga)
         store.renamingGroup = nil
         check("a new group holds the tab, which stays where it was", ga.groupID == grp.id && store.tabs.firstIndex { $0 === ga } == store.tabs.firstIndex { $0 === gb }.map { $0 - 1 })
@@ -341,6 +342,8 @@ enum SelfTest {
         store.toggleCollapsed(grp.id); store.select(home.id)
         check("a folded group shows only its header", store.sidebarItems.filter { if case .tab(let t, _) = $0 { return t.groupID == grp.id }; return false }.isEmpty
               && store.sidebarItems.contains { if case .header(let g, _) = $0 { return g.id == grp.id }; return false })
+        await pause(2.5)
+        check("folding a group unloads its tabs (the active tab is not in it)", [ga, gb, gc].filter { $0.groupID == grp.id }.allSatisfy { !$0.isLoaded }, "live=\(store.liveCount)")
         store.select(gb.id)
         check("the selected tab of a folded group stays visible", store.sidebarItems.contains { if case .tab(let t, _) = $0 { return t === gb }; return false })
         store.select(home.id); store.toggleCollapsed(grp.id)
