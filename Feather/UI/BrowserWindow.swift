@@ -360,7 +360,11 @@ private struct ContentArea: View {
                 StartPage(tab: tab, bookmarks: store.bookmarks, history: store.history, favicons: store.favicons)
                     .transition(.opacity)
             }
-            if let failure = tab.failure { ErrorState(message: failure) { tab.reloadOrStop() }.transition(.opacity) }
+            if let failure = tab.failure {
+                ErrorState(message: failure, retry: { tab.reloadOrStop() },
+                           insecure: tab.insecureOffer.map { offer in (host: offer.host ?? "this site", action: { tab.continueInsecurely() }) })
+                    .transition(.opacity)
+            }
         }
         .motion(Theme.fade, value: tab.webView == nil)
         .motion(Theme.fade, value: tab.failure)
@@ -434,6 +438,8 @@ private struct LoadingBar: View {
 private struct ErrorState: View {
     let message: String
     let retry: () -> Void
+    /// Set when HTTPS-only mode found no secure version: lets the user open the plain http page on purpose.
+    var insecure: (host: String, action: () -> Void)?
     @State private var appeared = false
 
     var body: some View {
@@ -448,6 +454,12 @@ private struct ErrorState: View {
                     .background(Capsule().fill(Brand.accent.opacity(0.22)))
             }
             .buttonStyle(PressStyle()).hoverFill(radius: 16, strength: 0.06).padding(.top, 4)
+            if let insecure {
+                Button(action: insecure.action) {
+                    Text("Open \(insecure.host) without encryption").font(.system(size: 12.5)).foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain).help("The page and anything you type into it can be read by others on the network.")
+            }
         }
         .reveal()
         .frame(maxWidth: .infinity, maxHeight: .infinity)

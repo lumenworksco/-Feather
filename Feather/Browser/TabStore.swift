@@ -85,6 +85,9 @@ final class TabStore: ObservableObject {
     /// Which tabs are playing sound, and muting them.
     private let mediaBridge = MediaBridge()
     var foldTimer: Timer?
+    /// Sites the user chose to open over plain http (HTTPS-only mode); forgotten when Feather quits.
+    private(set) var insecureAllowed: Set<String> = []
+    func allowInsecure(_ host: String) { insecureAllowed.insert(host) }
     /// Ad and tracker blocking (WebKit content rules on the shared configuration).
     let blocker: ContentBlocker
     /// New versions: found and prepared by the app, installed by the helper in Contents/Library.

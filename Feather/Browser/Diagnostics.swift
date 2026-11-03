@@ -488,6 +488,32 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- HTTPS-only mode.
+        do {
+            func up(_ s: String, allowed: Set<String> = []) -> String? { HTTPSOnly.upgraded(URL(string: s)!, allowed: allowed)?.absoluteString }
+            check("an http address is upgraded to https, path and query kept", up("http://example.com/a?b=1#c") == "https://example.com/a?b=1#c")
+            check("https and other schemes are left alone", up("https://example.com") == nil && up("about:blank") == nil && up("file:///tmp/x.html") == nil)
+            check("this computer and the local network are left alone (localhost, .local, IP addresses, single names, IPv6)",
+                  up("http://localhost/") == nil && up("http://app.localhost/") == nil && up("http://192.168.1.1/") == nil && up("http://printer.local/") == nil
+                  && up("http://router/") == nil && up("http://[::1]/") == nil && up("http://127.0.0.1/") == nil)
+            check("an explicit port (a development server) is left alone", up("http://example.com:8080/") == nil)
+            check("a site the user allowed, and its subdomains, are left alone", up("http://example.com/", allowed: ["example.com"]) == nil && up("http://www.example.com/", allowed: ["example.com"]) == nil && up("http://example.org/", allowed: ["example.com"]) != nil)
+            check("only failures that mean 'no secure version' offer http", HTTPSOnly.offersInsecure(after: NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost))
+                  && !HTTPSOnly.offersInsecure(after: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)) && !HTTPSOnly.offersInsecure(after: NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotFindHost)))
+            let ht = store.newTab(url: URL(string: "http://example.com/")!)
+            await waitUntil(15) { ht.webView?.url?.scheme == "https" }
+            check("a real http:// page is opened as https://", ht.webView?.url?.scheme == "https", "\(ht.webView?.url?.absoluteString ?? "nil")")
+            let nt = store.newTab(url: URL(string: "http://neverssl.com/")!)
+            await waitUntil(25) { nt.insecureOffer != nil }
+            check("a site with no secure version shows the warning and offers http", nt.insecureOffer?.host?.hasSuffix("neverssl.com") == true && nt.insecureOffer?.scheme == "http" && nt.failure != nil, "\(String(describing: nt.insecureOffer)) \(nt.failure ?? "no failure")")
+            let offeredHost = nt.insecureOffer?.host ?? ""
+            nt.continueInsecurely()
+            await waitUntil(25) { nt.webView?.url?.scheme == "http" && nt.failure == nil }
+            check("choosing 'open without encryption' loads the http page once, and remembers the site", nt.webView?.url?.scheme == "http" && store.insecureAllowed.contains(offeredHost), "\(nt.webView?.url?.absoluteString ?? "nil") \(nt.failure ?? "")")
+            store.close(ht.id); store.close(nt.id)
+            store.select(home.id); await pause(0.4)
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {

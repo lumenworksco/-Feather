@@ -44,6 +44,8 @@ final class BrowserSettings: ObservableObject {
     /// Block requests to known ad and tracking companies (see ContentBlocker), except on the sites listed in `blockExceptions`.
     @Published var contentBlocking: Bool { didSet { defaults.set(contentBlocking, forKey: "contentBlocking") } }
     @Published private(set) var blockExceptions: [String] { didSet { defaults.set(blockExceptions, forKey: "blockExceptions") } }
+    /// Open http:// addresses as https:// (see HTTPSOnly).
+    @Published var httpsOnly: Bool { didSet { defaults.set(httpsOnly, forKey: "httpsOnly") } }
     static let groupFoldChoices = [0, 30, 60, 120, 240]
     /// Look for new versions about once a day (a request to GitHub; nothing is installed without a click).
     @Published var autoUpdateCheck: Bool { didSet { defaults.set(autoUpdateCheck, forKey: "autoUpdateCheck") } }
@@ -70,6 +72,7 @@ final class BrowserSettings: ObservableObject {
         excludedHosts = defaults.stringArray(forKey: "excludedHosts") ?? []
         contentBlocking = defaults.object(forKey: "contentBlocking") as? Bool ?? true
         blockExceptions = defaults.stringArray(forKey: "blockExceptions") ?? []
+        httpsOnly = defaults.object(forKey: "httpsOnly") as? Bool ?? true
         groupFoldMinutes = defaults.integer(forKey: "groupFoldMinutes")
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
     }

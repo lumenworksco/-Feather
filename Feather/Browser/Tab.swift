@@ -19,6 +19,9 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     @Published var isPlayingAudio = false                // a page in this tab is making sound (see MediaBridge)
     @Published var isMuted = false                       // the user muted this tab; kept across navigation and unloading
     var mediaFrames: [String: (frame: WKFrameInfo, playing: Bool)] = [:]
+    /// Set when the secure (https) version of an http address could not be reached: the page the user can choose to open instead.
+    @Published private(set) var insecureOffer: URL?
+    private var lastUpgrade: (host: String, date: Date, original: URL)?
     @Published var isPinned = false                      // pinned tabs live in the sidebar's icon grid and sort first
     @Published private(set) var failure: String?
     @Published private(set) var notice: String?          // brief, non-blocking message (e.g. "page reloaded")
@@ -272,6 +275,21 @@ extension Tab: WKNavigationDelegate {
             decisionHandler(.cancel)
             return
         }
+        // HTTPS-only: an http:// page address is opened as https:// (only for the page itself, not for images and scripts inside it).
+        if let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true, store?.settings.httpsOnly == true,
+           let secure = HTTPSOnly.upgraded(url, allowed: store?.insecureAllowed ?? []) {
+            if let last = lastUpgrade, last.host == url.host?.lowercased(), Date().timeIntervalSince(last.date) < 20 {
+                // The secure page sent us straight back to http: stop instead of looping, and let the user decide.
+                insecureOffer = url
+                failure = "This site sent Feather back to an unencrypted (http) page."
+                decisionHandler(.cancel)
+                return
+            }
+            lastUpgrade = (url.host?.lowercased() ?? "", Date(), url)
+            decisionHandler(.cancel)
+            webView.load(URLRequest(url: secure))
+            return
+        }
         decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
     }
 
@@ -303,7 +321,7 @@ extension Tab: WKNavigationDelegate {
         }
     }
 
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { failure = nil; store?.webauthn.cancel(webView: webView) }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { failure = nil; insecureOffer = nil; store?.webauthn.cancel(webView: webView) }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let host = webView.url?.host {
@@ -352,6 +370,22 @@ extension Tab: WKNavigationDelegate {
         if ns.domain == "WebKitErrorDomain", ns.code == 102 { return }   // frame load interrupted (download/plug-in)
         if let failed = ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL { url = failed }
         failure = ns.localizedDescription
+        // The secure version of an http address could not be reached: say so, and offer the plain http page as an explicit choice.
+        if let up = lastUpgrade, Date().timeIntervalSince(up.date) < 30, (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host?.lowercased() == up.host,
+           HTTPSOnly.offersInsecure(after: ns) {
+            insecureOffer = up.original
+            failure = "Feather opens sites over a secure connection (https) only, and couldn’t reach a secure version of \(up.host)."
+        }
+    }
+
+    /// The user chose to open the unencrypted page anyway (until Feather quits, for this site).
+    func continueInsecurely() {
+        guard let offer = insecureOffer, let host = offer.host?.lowercased() else { return }
+        store?.allowInsecure(host)
+        insecureOffer = nil
+        failure = nil
+        lastUpgrade = nil
+        if let wv = webView { wv.load(URLRequest(url: offer)) } else { open(offer) }
     }
 }
 

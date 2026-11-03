@@ -105,6 +105,9 @@ struct SettingsView: View {
                 }
             }
             Section("Privacy") {
+                Toggle("Use secure connections only (https)", isOn: $settings.httpsOnly)
+                Text("Pages typed or linked as http:// are opened as https://. If a site has no secure version, Feather asks before opening the unencrypted page. Addresses on your own computer or network (localhost, .local, IP addresses, addresses with a port) are left alone.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Button("Clear Browsing History") { store.clearHistory() }
                 Button("Clear Website Data…") { confirmClearData = true }
             }
