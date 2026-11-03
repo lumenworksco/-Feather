@@ -594,6 +594,13 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- Picture in picture: WKWebView on macOS has it off, which makes every video refuse it; Feather switches it on.
+        do {
+            let on = store.selected?.webView?.configuration.preferences.value(forKey: "_allowsPictureInPictureMediaPlayback") as? Bool
+                ?? (store.makeWebView().configuration.preferences.value(forKey: "_allowsPictureInPictureMediaPlayback") as? Bool)
+            check("picture in picture is switched on for the web views (WebKit's default on macOS is off)", on == true, "\(String(describing: on))")
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {

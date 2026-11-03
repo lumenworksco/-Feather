@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.9-alpha (not released yet)
+- **Fixed: Picture in Picture never worked.** WKWebView on macOS has it switched off, so every video refused it, whatever the page or the menu asked for. Feather now switches it on (with a private WebKit setting that is checked for first, so a future macOS that drops it leaves PiP off instead of crashing). Checked with a real playing video: the command moves it into the floating window.
+
 ## 0.1.8-alpha
 - **Fixed:** the tab's right-click menu left out *Mute Tab* and *Picture in Picture* (and kept an out-of-date group list) because it was not rebuilt when the tab started playing sound.
 - **Split view**: right-click a tab ▸ *Open Side by Side with Current Tab*. Click a page to make it active; picking another tab or *Exit Split View* ends it. Both halves stay loaded; not saved across restarts; always 50/50.

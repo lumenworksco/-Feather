@@ -160,6 +160,7 @@ final class TabStore: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.isReady = true
+                self.enablePictureInPicture()
                 self.updates.startAutomaticChecks()
                 // The blocking rules go in before the first page loads (but a slow compile never holds the launch up for long), and so
                 // do cookies from a profile import, or the first loads would be signed out.
@@ -185,6 +186,18 @@ final class TabStore: ObservableObject {
                 MainActor.assumeIsolated { self?.flushAll() }
             }
         }
+    }
+
+    /// WKWebView on macOS has picture in picture switched off, so no video can use it, whatever the page or the app asks for. The only way to
+    /// switch it on is this private WebKit setting. It is applied after launch (touching WebKit settings inside the store's initializer keeps
+    /// the window from appearing) and only if it exists: if a future macOS removes it, picture in picture simply stays off instead of crashing.
+    private func enablePictureInPicture() {
+        let prefs = configuration.preferences
+        let setter = NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")
+        guard prefs.responds(to: setter) else { return }
+        // Called through its method implementation: key-value coding does not find a setter whose name starts with an underscore.
+        typealias SetBool = @convention(c) (AnyObject, Selector, Bool) -> Void
+        unsafeBitCast(prefs.method(for: setter), to: SetBool.self)(prefs, setter, true)
     }
 
     func refreshBlocking() async { await blocker.update(enabled: settings.contentBlocking, exceptions: settings.blockExceptions) }
