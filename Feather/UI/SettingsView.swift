@@ -61,6 +61,15 @@ struct SettingsView: View {
                 Text("Tabs with typed-in form fields, playing media, camera/microphone use, or an excluded site are never unloaded.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Tab groups") {
+                Picker("Fold idle groups", selection: $settings.groupFoldMinutes) {
+                    ForEach(BrowserSettings.groupFoldChoices, id: \.self) { m in
+                        Text(m == 0 ? "Never" : m < 60 ? "After \(m) minutes" : m == 60 ? "After 1 hour" : "After \(m / 60) hours").tag(m)
+                    }
+                }
+                Text("A group that has not been used for this long is folded and its tabs are unloaded to free memory. A group with the selected tab or one playing sound is never folded.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Never unload these sites") {
                 ForEach(settings.excludedHosts, id: \.self) { host in
                     HStack { Text(host); Spacer(); Button("Remove") { settings.removeExcluded(host) }.buttonStyle(.borderless) }
@@ -99,6 +108,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onChange(of: settings.inactiveMode) { _, _ in store.lifecycle.enforce() }
+        .onChange(of: settings.groupFoldMinutes) { _, _ in store.scheduleGroupFold() }
         .confirmationDialog("Clear all website data?", isPresented: $confirmClearData) {
             Button("Clear Cookies, Cache and Site Data", role: .destructive) {
                 Task { await WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) }

@@ -103,8 +103,42 @@ extension TabStore {
     /// Folding a group also unloads its tabs to free their memory (they reload when opened). The selected tab stays, and so does
     /// anything the lifecycle manager would never discard (typed-in form input, camera or microphone, audio, a pending security key).
     func toggleCollapsed(_ id: UUID) {
-        updateGroup(id) { $0.isCollapsed.toggle() }
-        if group(id)?.isCollapsed == true { Task { await lifecycle.unload(members(of: id)) } }
+        if group(id)?.isCollapsed == true { updateGroup(id) { $0.isCollapsed = false } } else { collapse(id) }
+    }
+
+    /// Folds the group (and does nothing if it is already folded, so a timer can never unfold one).
+    func collapse(_ id: UUID) {
+        guard group(id)?.isCollapsed == false else { return }
+        updateGroup(id) { $0.isCollapsed = true }
+        Task { await lifecycle.unload(members(of: id)) }
+    }
+
+    // MARK: Folding idle groups
+
+    /// When this group would be folded for being idle: its most recently used tab plus the setting's time. Nil when it never will be
+    /// (setting off, already folded, holds the selected tab, or something in it is playing sound).
+    func foldDeadline(_ group: TabGroup) -> Date? {
+        let minutes = settings.groupFoldMinutes
+        guard minutes > 0, !group.isCollapsed else { return nil }
+        let tabs = members(of: group.id)
+        guard !tabs.isEmpty, !tabs.contains(where: { $0.id == selectedID || $0.isPlayingAudio }) else { return nil }
+        return tabs.map(\.lastActive).max()?.addingTimeInterval(Double(minutes) * 60)
+    }
+
+    func foldIdleGroups(now: Date = Date()) {
+        for g in groups where foldDeadline(g).map({ $0 <= now }) == true { collapse(g.id) }
+    }
+
+    /// One timer for the soonest deadline (never shorter than 30 s, like the unload timer), set again whenever tabs or the setting change. Nothing polls.
+    func scheduleGroupFold() {
+        foldTimer?.invalidate()
+        foldTimer = nil
+        guard let next = groups.compactMap(foldDeadline).min() else { return }
+        let delay = max(next.timeIntervalSinceNow, 30)
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in Task { @MainActor in self?.foldIdleGroups(); self?.scheduleGroupFold() } }
+        timer.tolerance = delay * 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        foldTimer = timer
     }
     func rename(_ id: UUID, to name: String) { updateGroup(id) { $0.name = name.trimmingCharacters(in: .whitespacesAndNewlines) } }
     func setColor(_ id: UUID, _ color: GroupColor) { updateGroup(id) { $0.color = color } }

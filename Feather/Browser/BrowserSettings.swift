@@ -39,6 +39,9 @@ final class BrowserSettings: ObservableObject {
     @Published var sidebarVisible: Bool { didSet { defaults.set(sidebarVisible, forKey: "sidebarVisible") } }
     @Published private(set) var zoomLevels: [String: Double] { didSet { defaults.set(zoomLevels, forKey: "zoomLevels") } }
     @Published private(set) var excludedHosts: [String] { didSet { defaults.set(excludedHosts, forKey: "excludedHosts") } }
+    /// Fold (and unload) a tab group after none of its tabs was used for this many minutes. 0 = never.
+    @Published var groupFoldMinutes: Int { didSet { defaults.set(groupFoldMinutes, forKey: "groupFoldMinutes") } }
+    static let groupFoldChoices = [0, 30, 60, 120, 240]
     /// Look for new versions about once a day (a request to GitHub; nothing is installed without a click).
     @Published var autoUpdateCheck: Bool { didSet { defaults.set(autoUpdateCheck, forKey: "autoUpdateCheck") } }
     var lastUpdateCheck: Date? {
@@ -62,6 +65,7 @@ final class BrowserSettings: ObservableObject {
         sidebarVisible = CommandLine.arguments.contains("--sidebar=hidden") ? false : (defaults.object(forKey: "sidebarVisible") as? Bool ?? true)
         zoomLevels = defaults.dictionary(forKey: "zoomLevels") as? [String: Double] ?? [:]
         excludedHosts = defaults.stringArray(forKey: "excludedHosts") ?? []
+        groupFoldMinutes = defaults.integer(forKey: "groupFoldMinutes")
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
     }
 

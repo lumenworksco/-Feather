@@ -82,6 +82,7 @@ final class TabStore: ObservableObject {
     let webauthn = WebAuthnController()
     /// Which tabs are playing sound, and muting them.
     private let mediaBridge = MediaBridge()
+    var foldTimer: Timer?
     /// New versions: found and prepared by the app, installed by the helper in Contents/Library.
     private(set) lazy var updates = Updates(store: self)
     private(set) lazy var lifecycle = LifecycleManager(store: self)
@@ -321,6 +322,7 @@ final class TabStore: ObservableObject {
     /// Tab list/selection/load state changed: refresh the UI and schedule a session save.
     func tabsChanged() {
         objectWillChange.send()
+        scheduleGroupFold()
         sessionChanged(.structural)
     }
 

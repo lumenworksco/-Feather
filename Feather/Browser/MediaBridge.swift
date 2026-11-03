@@ -89,7 +89,7 @@ extension Tab {
     func mediaReport(token: String, frame: WKFrameInfo, playing: Bool) {
         mediaFrames[token] = (frame, playing)
         let any = mediaFrames.values.contains { $0.playing }
-        if any != isPlayingAudio { isPlayingAudio = any }
+        if any != isPlayingAudio { isPlayingAudio = any; store?.scheduleGroupFold() }
     }
 
     /// New page in the main frame: what the old page's frames said no longer applies.

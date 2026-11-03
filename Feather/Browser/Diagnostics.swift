@@ -365,6 +365,33 @@ enum SelfTest {
         for t in [gb, gc] { store.close(t.id) }
         store.select(home.id); await pause(0.4)
 
+        // --- Idle groups fold by themselves (never the one in use), and unfolding is never done by the timer.
+        do {
+            let ia = store.newTab(url: URL(string: "https://example.com")!), ib = store.newTab(url: URL(string: "https://example.org")!)
+            await settle(ia); await settle(ib)
+            let ig = store.newGroup(with: ia); store.renamingGroup = nil
+            store.addToGroup(ib, ig.id)
+            store.settings.groupFoldMinutes = 30
+            store.select(home.id)                                    // (leaving a tab stamps it as just used, so set the times after)
+            ia.lastActive = Date().addingTimeInterval(-3600); ib.lastActive = Date().addingTimeInterval(-3000)
+            check("an idle group has a fold deadline that has passed", store.foldDeadline(store.group(ig.id)!).map { $0 <= Date() } == true)
+            ib.lastActive = Date().addingTimeInterval(-60)
+            check("a group with a recently used tab is not due yet", store.foldDeadline(store.group(ig.id)!).map { $0 > Date() } == true)
+            ib.lastActive = Date().addingTimeInterval(-3000)
+            store.select(ib.id)
+            check("the group holding the selected tab never folds", store.foldDeadline(store.group(ig.id)!) == nil)
+            store.select(home.id)
+            ia.lastActive = Date().addingTimeInterval(-3600); ib.lastActive = Date().addingTimeInterval(-3000)
+            store.foldIdleGroups(); await pause(2.5)
+            check("an idle group is folded and its tabs unloaded", store.group(ig.id)?.isCollapsed == true && !ia.isLoaded && !ib.isLoaded)
+            store.collapse(ig.id)
+            check("folding an already folded group leaves it folded", store.group(ig.id)?.isCollapsed == true)
+            store.settings.groupFoldMinutes = 0
+            check("with the setting off nothing is ever due", store.groups.allSatisfy { store.foldDeadline($0) == nil })
+            store.closeGroup(ig.id)
+            store.select(home.id); await pause(0.4)
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {
