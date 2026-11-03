@@ -70,6 +70,14 @@ struct SettingsView: View {
                 Text("A group that has not been used for this long is folded and its tabs are unloaded to free memory. A group with the selected tab or one playing sound is never folded.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Content blocking") {
+                Toggle("Block known ad and tracking requests", isOn: $settings.contentBlocking)
+                ForEach(settings.blockExceptions, id: \.self) { host in
+                    HStack { Text(host); Spacer(); Button("Turn On Again") { settings.removeBlockException(host) }.buttonStyle(.borderless) }
+                }
+                Text("Blocking is off on the sites listed above (right-click a tab to add one). It stops a page's requests to a short built-in list of ad and tracking companies; it does not hide ads a site serves itself (YouTube's, for example), so it is not a full ad blocker.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Never unload these sites") {
                 ForEach(settings.excludedHosts, id: \.self) { host in
                     HStack { Text(host); Spacer(); Button("Remove") { settings.removeExcluded(host) }.buttonStyle(.borderless) }
@@ -108,6 +116,8 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onChange(of: settings.inactiveMode) { _, _ in store.lifecycle.enforce() }
+        .onChange(of: settings.contentBlocking) { _, _ in Task { await store.refreshBlocking() } }
+        .onChange(of: settings.blockExceptions) { _, _ in Task { await store.refreshBlocking() } }
         .onChange(of: settings.groupFoldMinutes) { _, _ in store.scheduleGroupFold() }
         .confirmationDialog("Clear all website data?", isPresented: $confirmClearData) {
             Button("Clear Cookies, Cache and Site Data", role: .destructive) {

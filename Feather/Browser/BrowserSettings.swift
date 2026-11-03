@@ -41,6 +41,9 @@ final class BrowserSettings: ObservableObject {
     @Published private(set) var excludedHosts: [String] { didSet { defaults.set(excludedHosts, forKey: "excludedHosts") } }
     /// Fold (and unload) a tab group after none of its tabs was used for this many minutes. 0 = never.
     @Published var groupFoldMinutes: Int { didSet { defaults.set(groupFoldMinutes, forKey: "groupFoldMinutes") } }
+    /// Block requests to known ad and tracking companies (see ContentBlocker), except on the sites listed in `blockExceptions`.
+    @Published var contentBlocking: Bool { didSet { defaults.set(contentBlocking, forKey: "contentBlocking") } }
+    @Published private(set) var blockExceptions: [String] { didSet { defaults.set(blockExceptions, forKey: "blockExceptions") } }
     static let groupFoldChoices = [0, 30, 60, 120, 240]
     /// Look for new versions about once a day (a request to GitHub; nothing is installed without a click).
     @Published var autoUpdateCheck: Bool { didSet { defaults.set(autoUpdateCheck, forKey: "autoUpdateCheck") } }
@@ -65,6 +68,8 @@ final class BrowserSettings: ObservableObject {
         sidebarVisible = CommandLine.arguments.contains("--sidebar=hidden") ? false : (defaults.object(forKey: "sidebarVisible") as? Bool ?? true)
         zoomLevels = defaults.dictionary(forKey: "zoomLevels") as? [String: Double] ?? [:]
         excludedHosts = defaults.stringArray(forKey: "excludedHosts") ?? []
+        contentBlocking = defaults.object(forKey: "contentBlocking") as? Bool ?? true
+        blockExceptions = defaults.stringArray(forKey: "blockExceptions") ?? []
         groupFoldMinutes = defaults.integer(forKey: "groupFoldMinutes")
         autoUpdateCheck = defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true
     }
@@ -85,6 +90,26 @@ final class BrowserSettings: ObservableObject {
         if s.hasPrefix("www.") { s.removeFirst(4) }
         guard !s.isEmpty, !excludedHosts.contains(s) else { return }
         excludedHosts.append(s)
+    }
+
+    private static func siteName(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s.contains("://") { s = URL(string: s)?.host ?? s }
+        if s.hasPrefix("www.") { s.removeFirst(4) }
+        return s
+    }
+    func isBlockingOff(_ host: String) -> Bool {
+        let h = Self.siteName(host)
+        return blockExceptions.contains { h == $0 || h.hasSuffix("." + $0) }
+    }
+    func addBlockException(_ raw: String) {
+        let s = Self.siteName(raw)
+        guard !s.isEmpty, !blockExceptions.contains(s) else { return }
+        blockExceptions.append(s)
+    }
+    func removeBlockException(_ raw: String) {
+        let s = Self.siteName(raw)
+        blockExceptions.removeAll { $0 == s || s.hasSuffix("." + $0) }
     }
 
     func removeExcluded(_ host: String) { excludedHosts.removeAll { $0 == host } }

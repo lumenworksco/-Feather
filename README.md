@@ -13,11 +13,16 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 
 ## Features
 
-- **Sidebar tabs**, with **pinned tabs** as an icon grid at the top. Drag to reorder, drag onto the pin area to pin, drag back to unpin. **Tab groups** (right-click a tab): named, colored, foldable sets of tabs. Hide the sidebar with ⌘S for a compact top bar.
+- **Sidebar tabs**, with **pinned tabs** as an icon grid at the top. Drag to reorder, drag onto the pin area to pin, drag back to unpin. Hide the sidebar with ⌘S for a compact top bar.
+- **Tab groups** (right-click a tab ▸ Add to Group): named, colored sets of tabs that sit together in the sidebar. Click a header to fold the group, which also **unloads its tabs** to free memory (the selected tab, and any tab with typed-in text, playing sound, using the camera or waiting for a security key, stay). Drag a whole group to reorder it, drop a tab on a header to add it, use the **+** on a header for a new tab inside it, and let **Settings ▸ Tab groups** fold groups you haven't used for a while (off by default). Groups are saved with your session.
+- **Search Tabs** (⇧⌘A): type part of a title or address to jump to an open tab, a bookmark or a page from your history.
+- **Sound.** Tabs that play sound show a speaker you can click to mute; right-click a tab for Picture in Picture. This watches the page's `<audio>` and `<video>` elements, so sound made another way (Web Audio, as in some games) is not detected.
+- **Downloads list** (button beside the gear, or ⌥⌘L): progress, open, show in Finder, cancel, remove. The list is for this session; the files stay in ~/Downloads.
+- **Ad and tracker blocking** (Settings ▸ Content blocking): a short built-in list of advertising and tracking companies, applied by WebKit to requests a page makes to *other* sites; right-click a tab to turn it off for a site. It is **not a full ad blocker**: it does not hide ads a site serves itself (YouTube's, for example).
 - **One address bar** for URLs and Google searches. It takes focus on every new tab.
 - **Memory-conscious by design.** Blank and restored tabs have no web view at all; pages in tabs you haven't visited are unloaded according to a setting (Balanced / Memory Saver / Aggressive). A tab is never unloaded while it is loading, playing media, using the camera or microphone, on an excluded site, or has text typed into a form.
 - **Crash-safe sessions.** Your tabs, pins, selection, and each tab's back/forward history and scroll position are saved within about a quarter of a second of any change and restored after a quit, crash or `kill -9`, with backups and safeguards against a damaged session file (see [Keeping your tabs safe](#keeping-your-tabs-safe)). Only the selected tab loads at launch. If WebKit's page process dies, the tab reloads itself.
-- Bookmarks, local history, downloads, find in page, per-site zoom, printing, camera/microphone/location prompts, file upload, JavaScript dialogs, local HTML files.
+- Bookmarks, local history, find in page, per-site zoom, printing, camera/microphone/location prompts, file upload, JavaScript dialogs, local HTML files.
 - **USB security keys** (YubiKey and other FIDO2 keys) for sign-in and registration, including PIN entry (see [Security keys](#security-keys-yubikey-and-other-usb-fido2-keys)).
 - **Updates inside the app**: Feather checks for a new version about once a day (switch off in Settings), shows a banner, and installs it with one click, then reopens with your tabs. Updates are signed by the project owner; see [Updates](#updates).
 - **Default-browser support**: opens links from other apps.
@@ -57,7 +62,7 @@ Feather asks GitHub for the newest release about once a day (**Settings ▸ Upda
 
 ## What's not there yet
 
-No password manager or AutoFill, no passkeys stored on the Mac (USB security keys work, see above), no extensions, no ad/tracker blocking, no private browsing, no download list (just a progress badge), no sync, one window only. Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
+No password manager or AutoFill, no passkeys stored on the Mac (USB security keys work, see above), no extensions, no full ad blocker (only the short built-in tracker list above), no private browsing, no sync, one window only. Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
 
 ## Memory: a goal, not a result
 
@@ -65,7 +70,7 @@ Feather is designed to be light, but **no measurements against Safari or any oth
 
 ## Privacy
 
-No analytics, accounts or telemetry. Tabs, history and bookmarks are stored locally in the app's sandbox container. Besides the pages you open, Feather makes two kinds of request of its own: it downloads the icon of sites you visit to show in the tab, and it asks GitHub for the newest release about once a day (Settings ▸ Updates switches this off). Icons are saved locally (about 1-4 KB each, at most 400 files, refreshed weekly) so tabs show them straight after a relaunch; Clear History removes them except for sites you still have open or bookmarked. The default search engine is Google, so searches typed in the address bar go to Google. The app runs in the macOS App Sandbox.
+No analytics, accounts or telemetry. Tabs, history and bookmarks are stored locally in the app's sandbox container. Ad and tracker blocking happens inside WebKit and sends nothing anywhere. Besides the pages you open, Feather makes two kinds of request of its own: it downloads the icon of sites you visit to show in the tab, and it asks GitHub for the newest release about once a day (Settings ▸ Updates switches this off). Icons are saved locally (about 1-4 KB each, at most 400 files, refreshed weekly) so tabs show them straight after a relaunch; Clear History removes them except for sites you still have open or bookmarked. The default search engine is Google, so searches typed in the address bar go to Google. The app runs in the macOS App Sandbox.
 
 ## Build and run
 
@@ -90,6 +95,7 @@ The app is signed ad hoc, not with a Developer ID, and is not notarized. If you 
 | Pin / unpin tab | ⇧⌘P | Hide / show sidebar | ⌘S |
 | Bookmark page | ⌘D | Find in page | ⌘F, ⌘G, ⇧⌘G |
 | Zoom in / out / reset | ⌘= (⌘+) / ⌘- / ⌘0 | Print | ⌘P |
+| Search tabs | ⇧⌘A | Show downloads | ⌥⌘L |
 
 ## Development
 

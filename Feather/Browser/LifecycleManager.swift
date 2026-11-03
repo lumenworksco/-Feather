@@ -20,6 +20,10 @@ final class LifecycleManager {
     private var running = false
     private var pendingLimit: Int?
     private var rerun = false
+    /// Set when a tab was kept only because its web process did not answer the safety check in time.
+    private var sawTimeout = false
+    private var retries = 0
+    private var retryTask: Task<Void, Never>?
 
     init(store: TabStore) {
         self.store = store
@@ -62,6 +66,7 @@ final class LifecycleManager {
         let mode = store.settings.inactiveMode
         let now = Date()
         let inactive = store.tabs.filter { $0.isLoaded && $0.id != store.selectedID }.sorted { $0.lastActive > $1.lastActive }
+        sawTimeout = false
         let keep = max(0, limit - 1)
         var doomed = Array(inactive.dropFirst(keep))
         if let idle = mode.maxIdle {
@@ -73,15 +78,39 @@ final class LifecycleManager {
             Log.lifecycle.info("unloaded tab (\(tab.url?.host ?? "-"))")
         }
         scheduleIdleTimer()
+        scheduleRetryIfNeeded()
     }
 
-    /// Unloads these tabs now (a folded tab group), skipping the active tab and any tab `canUnload` vetoes.
-    func unload(_ tabs: [Tab]) async {
-        for tab in tabs {
-            guard tab.isLoaded, tab.id != store.selectedID, await canUnload(tab), tab.isLoaded, tab.id != store.selectedID else { continue }
-            tab.unload()
-            Log.lifecycle.info("unloaded tab of a folded group (\(tab.url?.host ?? "-"))")
+    /// A tab kept only because its page was too slow to answer is tried again shortly (a busy page is usually busy only for a moment),
+    /// at most three times in a row, so a permanently stuck page is not asked forever. Without this it would stay loaded until some
+    /// unrelated event happened to run the check again.
+    private func scheduleRetryIfNeeded() {
+        guard sawTimeout, retries < 3 else { if !sawTimeout { retries = 0 }; return }
+        retries += 1
+        retryTask?.cancel()
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { self?.enforce() }
         }
+    }
+
+    /// Unloads these tabs now (a folded tab group), skipping the active tab and any tab `canUnload` vetoes. A tab that is vetoed
+    /// (still loading, or slow to answer) is tried again every few seconds, up to three times, and only while its group is still folded.
+    func unload(_ tabs: [Tab], attempt: Int = 0) async {
+        var skipped: [Tab] = []
+        for tab in tabs {
+            guard tab.isLoaded, tab.id != store.selectedID else { continue }
+            if await canUnload(tab), tab.isLoaded, tab.id != store.selectedID {
+                tab.unload()
+                Log.lifecycle.info("unloaded tab of a folded group (\(tab.url?.host ?? "-"))")
+            } else {
+                skipped.append(tab)
+            }
+        }
+        guard !skipped.isEmpty, attempt < 3 else { return }
+        try? await Task.sleep(for: .seconds(4))
+        let stillFolded = skipped.filter { store.group($0.groupID)?.isCollapsed == true }
+        if !stillFolded.isEmpty { await unload(stillFolded, attempt: attempt + 1) }
     }
 
     /// Never discard something the user would notice losing. Anything uncertain (including a web process that
@@ -92,7 +121,7 @@ final class LifecycleManager {
         if store.webauthn.isBusy(wv) { return false }          // a security-key sign-in is waiting for a touch
         if wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none { return false }
         let host = tab.url?.host ?? "-"
-        return await race(seconds: 2, fallback: false, onTimeout: { Log.lifecycle.error("unload check timed out for \(host); keeping tab") }) { [weak wv] in
+        return await race(seconds: 2, fallback: false, onTimeout: { [weak self] in self?.sawTimeout = true; Log.lifecycle.error("unload check timed out for \(host); keeping tab") }) { [weak wv] in
             guard let wv else { return false }
             if await wv.requestMediaPlaybackState() == .playing { return false }
             let dirty = (try? await wv.evaluateJavaScript("window.__featherDirty === true")) as? Bool ?? false

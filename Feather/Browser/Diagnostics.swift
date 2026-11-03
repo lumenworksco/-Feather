@@ -254,6 +254,10 @@ enum SelfTest {
 
         // --- New-tab focus: the address field must be the first responder, with its text selected.
         func pause(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
+        /// Waits until at most `n` web views are live (unloading is asynchronous and slower when a page is slow to answer), for at most 20 s.
+        func waitUntil(_ seconds: Double = 20, _ done: () -> Bool) async { for _ in 0..<Int(seconds * 5) where !done() { try? await Task.sleep(for: .milliseconds(200)) } }
+        /// Waits until at most `n` web views are live
+        func waitForLive(atMost n: Int) async { for _ in 0..<100 where store.liveCount > n { try? await Task.sleep(for: .milliseconds(200)) } }
         func addressFocus() -> (focused: Bool, selectedAll: Bool, detail: String) {
             guard let w = NSApp.windows.first(where: { $0.title == "Feather" }) else { return (false, false, "no window") }
             guard let editor = w.firstResponder as? NSTextView, editor.isFieldEditor, let field = editor.delegate as? NSTextField else {
@@ -342,7 +346,7 @@ enum SelfTest {
         store.toggleCollapsed(grp.id); store.select(home.id)
         check("a folded group shows only its header", store.sidebarItems.filter { if case .tab(let t, _) = $0 { return t.groupID == grp.id }; return false }.isEmpty
               && store.sidebarItems.contains { if case .header(let g, _) = $0 { return g.id == grp.id }; return false })
-        await pause(2.5)
+        await waitUntil { [ga, gb, gc].filter { $0.groupID == grp.id }.allSatisfy { !$0.isLoaded } }
         check("folding a group unloads its tabs (the active tab is not in it)", [ga, gb, gc].filter { $0.groupID == grp.id }.allSatisfy { !$0.isLoaded }, "live=\(store.liveCount)")
         store.select(gb.id)
         check("the selected tab of a folded group stays visible", store.sidebarItems.contains { if case .tab(let t, _) = $0 { return t === gb }; return false })
@@ -382,7 +386,8 @@ enum SelfTest {
             check("the group holding the selected tab never folds", store.foldDeadline(store.group(ig.id)!) == nil)
             store.select(home.id)
             ia.lastActive = Date().addingTimeInterval(-3600); ib.lastActive = Date().addingTimeInterval(-3000)
-            store.foldIdleGroups(); await pause(2.5)
+            store.foldIdleGroups()
+            await waitUntil { !ia.isLoaded && !ib.isLoaded }
             check("an idle group is folded and its tabs unloaded", store.group(ig.id)?.isCollapsed == true && !ia.isLoaded && !ib.isLoaded)
             store.collapse(ig.id)
             check("folding an already folded group leaves it folded", store.group(ig.id)?.isCollapsed == true)
@@ -453,6 +458,36 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- Content blocking: the rules are valid, and they block, and exceptions unblock (on a page that was already open).
+        do {
+            let json = ContentBlocker.rulesJSON(exceptions: ["example.com"])
+            let parsed = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [[String: Any]]
+            check("the built-in rules are valid JSON: one block rule per domain plus one exception", parsed?.count == ContentBlocker.domains.count + 1 && json.contains(#"doubleclick\\.net"#))
+            await store.blocker.install(json: json)
+            check("WebKit accepts the built-in rules", store.blocker.installed != nil)
+            let bt = store.newTab(url: URL(string: "https://example.com")!)
+            await settle(bt)
+            func fetchOutcome() async -> String {
+                let js = "try { await fetch('https://example.org/', { mode: 'no-cors', cache: 'no-store' }); return 'loaded' } catch (e) { return 'blocked' }"
+                return ((try? await bt.webView?.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: .page)) as? String) ?? "error"
+            }
+            await store.blocker.install(json: ContentBlocker.rulesJSON(domains: ["example.org"], exceptions: []))
+            let blocked = await fetchOutcome()
+            check("a third-party request to a listed domain is blocked, on a page that was already open", blocked == "blocked", blocked)
+            await store.blocker.install(json: ContentBlocker.rulesJSON(domains: ["example.org"], exceptions: ["example.com"]))
+            let allowed = await fetchOutcome()
+            check("an exception for the page's site lets the same request through", allowed == "loaded", allowed)
+            await store.blocker.install(json: ContentBlocker.rulesJSON(domains: ["example.org"], exceptions: ["other.net"]))
+            let again = await fetchOutcome()
+            check("an exception for another site changes nothing", again == "blocked", again)
+            store.blocker.remove()
+            let off = await fetchOutcome()
+            check("with blocking removed the request loads", off == "loaded", off)
+            await store.refreshBlocking()
+            store.close(bt.id)
+            store.select(home.id); await pause(0.4)
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {
@@ -511,7 +546,8 @@ enum SelfTest {
         }
         try? await Task.sleep(for: .seconds(1))
         check("6 tabs open", store.tabs.count == 6)
-        check("live web views capped at 3", store.liveCount <= 3, "(live=\(store.liveCount))")
+        await waitForLive(atMost: 3)
+        check("live web views capped at 3", store.liveCount <= 3, "(live=\(store.liveCount): " + store.tabs.filter(\.isLoaded).map { "\($0.url?.host ?? "-") loading=\($0.isLoading) playing=\($0.isPlayingAudio) selected=\($0.id == store.selectedID)" }.joined(separator: "; ") + ")")
         check("selected tab is live", store.selected?.isLoaded == true)
         check("unloaded tabs keep URL", store.tabs.allSatisfy { $0.url != nil })
         if let state = store.selected?.webView?.interactionState {
@@ -537,6 +573,7 @@ enum SelfTest {
             check("a tab loaded in the background sees a real viewport, not 0x0", width > 200, "innerWidth=\(width)")
         }
         try? await Task.sleep(for: .seconds(1))
+        await waitForLive(atMost: 3)
         check("still capped after restore", store.liveCount <= 3, "(live=\(store.liveCount))")
 
         // Unsaved-input protection: mark a tab dirty, push it out of the window of recent tabs.
@@ -572,6 +609,7 @@ enum SelfTest {
         store.select(store.tabs[5].id)
         store.lifecycle.handlePressure(critical: true)
         try? await Task.sleep(for: .seconds(1.5))
+        await waitForLive(atMost: 2)
         check("critical pressure drops to active tab (+ protected)", store.liveCount <= 2, "(live=\(store.liveCount))")
 
         // Release: closed tabs and web views must actually deallocate.

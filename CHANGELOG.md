@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7-alpha
+- **Tab groups, more.** Folding a group now **unloads its tabs** (the selected tab and any tab with typed-in text, sound, camera/microphone use or a pending security key stay). Drag a whole group to reorder it, use the **+** on a group header (or right-click ▸ New Tab in Group) for a new tab inside it, and drop a tab or group on the New Tab row to put it at the very top. **Settings ▸ Tab groups** can fold groups you haven't used for 30 minutes to 4 hours (off by default).
+- **Search Tabs** (⇧⌘A): find an open tab, a bookmark or a page from history by typing part of its name or address. (It is not ⌘K, which many websites use.)
+- **Sound.** Tabs that play sound show a speaker; click it to mute. Right-click ▸ Picture in Picture, or Navigate ▸ Picture in Picture. Only `<audio>`/`<video>` elements are detected, not Web Audio. Picture in Picture is not tested with a real video yet.
+- **Downloads list**: a button beside the gear (or ⌥⌘L) shows this session's downloads with open, show in Finder, cancel, remove and clear.
+- **Ad and tracker blocking** (on by default; **Settings ▸ Content blocking**): requests a page makes to about 60 well-known advertising and tracking companies are blocked by WebKit. Right-click a tab to turn it off for one site. It is not a full ad blocker (ads served from a site's own domain, such as YouTube's, are not touched), and it never blocks a site's own requests.
+- Internal: the self-test waits for unloading to finish instead of a fixed delay, and prints which tabs were live when a cap check fails.
 ## 0.1.6-alpha
 - **Tab groups.** Right-click a tab > Add to Group > New Group (or Navigate > Add Tab to New Group). Groups have a name and a color, sit together in the sidebar, fold away by clicking their header, and are saved with your session. Drop a tab on a header to add it; links opened from a grouped tab stay in the group; pinning a tab takes it out. Not yet: dragging a whole group, or putting a tab before a group that is first in the list by dragging.
 - Fixed: a tab that was playing audio kept playing for a while after it was closed (or unloaded). Media is now paused and the page emptied before the web view is released.

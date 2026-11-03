@@ -364,6 +364,10 @@ private struct TabMenu: View {
         Button("Reload") { tab.reloadOrStop() }
         if tab.isPlayingAudio || tab.isMuted { Button(tab.isMuted ? "Unmute Tab" : "Mute Tab") { tab.toggleMute() } }
         if tab.isPlayingAudio { Button("Picture in Picture") { tab.pictureInPicture() } }
+        if let host = tab.url?.host, store.settings.contentBlocking {
+            let off = store.settings.isBlockingOff(host)
+            Button(off ? "Turn On Ad and Tracker Blocking for \(host)" : "Turn Off Ad and Tracker Blocking for \(host)") { store.setBlocking(off, for: tab) }
+        }
         if let host = tab.url?.host {
             Button("Never Unload \(host)") { store.settings.addExcluded(host) }
         }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Feather: a small, calm browser for your Mac</title>
-<meta name="description" content="Feather is a free, open-source macOS browser built on WebKit, with sidebar tabs, pinned tabs, USB security key support, and sessions designed never to lose your tabs. Early alpha.">
+<meta name="description" content="Feather is a free, open-source macOS browser built on WebKit, with sidebar tabs, tab groups, pinned tabs, USB security key support, and sessions designed never to lose your tabs. Early alpha.">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#121216" media="(prefers-color-scheme: dark)">
@@ -101,6 +101,21 @@
         <p>Tabs live in a sidebar. Pinned tabs sit in an icon grid at the top: drag a tab onto it to pin, drag to reorder, drag back to unpin.</p>
       </article>
       <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2"/><path d="M7 14h14M7 18h14M3 14h.01M3 18h.01"/></svg></div>
+        <h3>Tab groups</h3>
+        <p>Named, colored groups you can drag around. Folding a group unloads its tabs to free memory, and idle groups can fold by themselves.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg></div>
+        <h3>Search tabs</h3>
+        <p>Press <kbd>&#8679;&#8984;A</kbd> and type: jump to an open tab, a bookmark or a page from your history.</p>
+      </article>
+      <article class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 9a4 4 0 0 1 0 6"/></svg></div>
+        <h3>Sound and blocking</h3>
+        <p>A speaker on tabs that play sound, to mute with a click. A short built-in list blocks well-known ad and tracking requests; it is not a full ad blocker.</p>
+      </article>
+      <article class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="5"/><circle cx="8.5" cy="12" r="1.6"/><path d="M13 12h4"/></svg></div>
         <h3>One address bar</h3>
         <p>URLs and searches in one place. It takes focus on every new tab, and a click selects the whole address so you can just type.</p>
@@ -188,11 +203,11 @@
       <article class="panel good reveal">
         <h3>Works today</h3>
         <ul>
-          <li>Daily browsing with sidebar and pinned tabs</li>
+          <li>Daily browsing with sidebar, pinned tabs and tab groups</li>
           <li>Crash-safe sessions and backups</li>
           <li>USB security keys, with PIN</li>
           <li>Signed in-app updates</li>
-          <li>Bookmarks, history, downloads, find, zoom, print</li>
+          <li>Bookmarks, history, downloads list, find, zoom, print</li>
           <li>Dark and light, with considered motion</li>
         </ul>
       </article>
@@ -201,9 +216,9 @@
         <ul>
           <li>Password manager and AutoFill</li>
           <li>Extensions</li>
-          <li>Ad and tracker blocking</li>
+          <li>A full ad blocker (a short tracker list is built in)</li>
           <li>Private browsing</li>
-          <li>A download list, sync, multiple windows</li>
+          <li>Sync, multiple windows</li>
           <li>Intel Macs (Apple silicon only)</li>
         </ul>
       </article>
@@ -272,7 +287,7 @@ xcodebuild -project Feather.xcodeproj \
       <details class="reveal"><summary>Is it safe to run an app macOS can&rsquo;t verify?</summary><p>macOS shows that warning because Apple hasn&rsquo;t reviewed the app, not because anything was found wrong with it. The honest answer is that you are trusting an individual developer. You can check the SHA-256 shown above, read every line of the source, or build Feather yourself with the steps above. Updates are signed with a key only the developer holds.</p></details>
       <details class="reveal"><summary>Is it built on Chrome or Firefox?</summary><p>No. Feather uses WebKit, the same engine as Safari, through Apple&rsquo;s own <code>WKWebView</code>. The browser around it is written in Swift and SwiftUI.</p></details>
       <details class="reveal"><summary>What does Feather send over the network?</summary><p>The pages you open. It also downloads the small icon of each site you visit, to show it in your tabs, and asks GitHub for the newest release about once a day (you can switch that off in Settings). The address bar searches Google. There are no analytics, accounts or telemetry. Tabs, history and bookmarks stay on your Mac.</p></details>
-      <details class="reveal"><summary>Will it support extensions or passwords?</summary><p>Not yet. A password manager, ad and tracker blocking, private browsing and extensions are all on the list, in no promised order.</p></details>
+      <details class="reveal"><summary>Will it support extensions or passwords?</summary><p>Not yet. A password manager, a full ad blocker, private browsing and extensions are all on the list, in no promised order.</p></details>
       <details class="reveal"><summary>Why only Apple silicon and macOS 14?</summary><p>It is built and tested on a single Apple silicon Mac, and Feather doesn&rsquo;t offer an Intel build yet. It is meant to run on macOS 14 or later but hasn&rsquo;t been tried on other versions.</p></details>
       <details class="reveal"><summary>Is it lighter than Safari or Chrome?</summary><p>It is designed to be easy on memory, with unloading of tabs you aren&rsquo;t using, but nobody has measured it against other browsers yet. Until that is done, Feather makes no claim.</p></details>
       <details class="reveal"><summary>How do updates work, and can I trust them?</summary><p>Each release carries a manifest signed with a private key kept only by the developer. Feather has the matching public key built in and ignores anything that doesn&rsquo;t verify, so a compromised download page alone can&rsquo;t push an update. A small helper installs it after checking everything again, and rolls back if the new version doesn&rsquo;t start. See the <a href="https://github.com/lumenworksco/-Feather#updates" rel="noopener">README</a> for the details.</p></details>

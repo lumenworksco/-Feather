@@ -176,6 +176,9 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     func goBack() { webView?.goBack() }
     func goForward() { webView?.goForward() }
 
+    /// Reloads the page if one is showing (an unloaded tab simply loads afresh when opened).
+    func reload() { if let wv = webView, wv.url != nil { wv.reload() } }
+
     func reloadOrStop() {
         guard let wv = webView else { ensureLoaded(); return }
         if wv.isLoading { wv.stopLoading() }

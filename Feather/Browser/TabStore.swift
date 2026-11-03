@@ -85,6 +85,8 @@ final class TabStore: ObservableObject {
     /// Which tabs are playing sound, and muting them.
     private let mediaBridge = MediaBridge()
     var foldTimer: Timer?
+    /// Ad and tracker blocking (WebKit content rules on the shared configuration).
+    let blocker: ContentBlocker
     /// New versions: found and prepared by the app, installed by the helper in Contents/Library.
     private(set) lazy var updates = Updates(store: self)
     private(set) lazy var lifecycle = LifecycleManager(store: self)
@@ -117,6 +119,7 @@ final class TabStore: ObservableObject {
         config.userContentController.addScriptMessageHandler(WebAuthnBridge(controller: webauthn), contentWorld: .page, name: WebAuthnBridge.name)
         config.userContentController.addUserScript(WKUserScript(source: MediaBridge.script, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .defaultClient))
         config.userContentController.addScriptMessageHandler(mediaBridge, contentWorld: .defaultClient, name: MediaBridge.name)
+        blocker = ContentBlocker(controller: config.userContentController)
         configuration = config
 
         // The profile lock comes first: a second Feather on the same profile must not write anything to it.
@@ -149,8 +152,13 @@ final class TabStore: ObservableObject {
                 guard let self else { return }
                 self.isReady = true
                 self.updates.startAutomaticChecks()
-                // Cookies from a profile import must be in place before any page loads, or the first loads would be signed out.
-                if CookieImport.isPending { Task { await CookieImport.run(); self.finishLaunch() } } else { self.finishLaunch() }
+                // The blocking rules go in before the first page loads (but a slow compile never holds the launch up for long), and so
+                // do cookies from a profile import, or the first loads would be signed out.
+                Task {
+                    await waitAtMost(1.5) { await self.refreshBlocking() }
+                    if CookieImport.isPending { await CookieImport.run() }
+                    self.finishLaunch()
+                }
             }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
@@ -168,6 +176,15 @@ final class TabStore: ObservableObject {
                 MainActor.assumeIsolated { self?.flushAll() }
             }
         }
+    }
+
+    func refreshBlocking() async { await blocker.update(enabled: settings.contentBlocking, exceptions: settings.blockExceptions) }
+
+    /// Turns blocking off or on for one site, then reloads the tab so the change shows.
+    func setBlocking(_ on: Bool, for tab: Tab) {
+        guard let host = tab.url?.host else { return }
+        if on { settings.removeBlockException(host) } else { settings.addBlockException(host) }
+        Task { await refreshBlocking(); tab.reload() }
     }
 
     private func finishLaunch() {
