@@ -185,7 +185,7 @@ private struct TabRow: View {
                 Spacer(minLength: 0)
             }
             .padding(.leading, group == nil ? 10 : 18)
-            .padding(.trailing, selected || hovering ? 32 : 10)         // leave room for the close button so the title never runs under it
+            .padding(.trailing, (selected || hovering ? 32 : 10) + (tab.isPlayingAudio || tab.isMuted ? 20 : 0))         // leave room for the close and speaker buttons so the title never runs under them
             .frame(height: 32)
             .overlay(alignment: .leading) {
                 if let group { Capsule().fill(group.color.color).frame(width: 3).padding(.vertical, 6).padding(.leading, 5) }
@@ -206,6 +206,10 @@ private struct TabRow: View {
         .overlay(alignment: .trailing) {
             if selected || hovering { CloseButton { store.close(tab.id) }.padding(.trailing, 7).transition(.opacity.combined(with: .scale(scale: 0.5))) }
         }
+        .overlay(alignment: .trailing) {
+            if tab.isPlayingAudio || tab.isMuted { SpeakerButton(tab: tab).padding(.trailing, selected || hovering ? 27 : 7).transition(.opacity.combined(with: .scale(scale: 0.5))) }
+        }
+        .motion(Theme.quick, value: tab.isPlayingAudio || tab.isMuted)
         .insertionMark(dropTargeted)
         .onHover { hovering = $0 }
         .motion(Theme.quick, value: hovering)
@@ -217,6 +221,23 @@ private struct TabRow: View {
         } isTargeted: { dropTargeted = $0 }
         .help(tab.isLoaded || tab.url == nil ? tab.displayTitle : "\(tab.displayTitle) — unloaded to save memory; reloads when opened")
         .contextMenu { TabMenu(tab: tab, store: store) }
+    }
+}
+
+/// Shown on a tab that is playing sound (or that was muted): click to mute or unmute it.
+private struct SpeakerButton: View {
+    @ObservedObject var tab: Tab
+    @State private var hovering = false
+    var body: some View {
+        Button { tab.toggleMute() } label: {
+            Image(systemName: tab.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 10, weight: .medium)).frame(width: 18, height: 18)
+                .background(Circle().fill(Color.primary.opacity(hovering ? 0.16 : 0)))
+        }
+        .buttonStyle(PressStyle(scale: 0.88))
+        .foregroundStyle(tab.isMuted ? Color.secondary : Brand.accent)
+        .onHover { hovering = $0 }
+        .motion(Theme.fade, value: hovering)
+        .help(tab.isMuted ? "Unmute Tab" : "Mute Tab")
     }
 }
 
@@ -315,6 +336,8 @@ private struct TabMenu: View {
             if tab.groupID != nil { Button("Remove from Group") { Theme.animate { store.removeFromGroup(tab) } } }
         }
         Button("Reload") { tab.reloadOrStop() }
+        if tab.isPlayingAudio || tab.isMuted { Button(tab.isMuted ? "Unmute Tab" : "Mute Tab") { tab.toggleMute() } }
+        if tab.isPlayingAudio { Button("Picture in Picture") { tab.pictureInPicture() } }
         if let host = tab.url?.host {
             Button("Never Unload \(host)") { store.settings.addExcluded(host) }
         }
@@ -399,6 +422,12 @@ private struct PinnedTile: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+            .overlay(alignment: .topLeading) {
+                if tab.isPlayingAudio || tab.isMuted {
+                    Image(systemName: tab.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 8))
+                        .foregroundStyle(tab.isMuted ? Color.secondary : Brand.accent).padding(4)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if tab.isLoading && tab.isLoaded { ProgressView().controlSize(.mini).scaleEffect(0.7).padding(3).transition(.opacity) }
             }

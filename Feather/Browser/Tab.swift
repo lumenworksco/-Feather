@@ -16,6 +16,9 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published var groupID: UUID?                        // the tab group it belongs to (never set on pinned tabs)
+    @Published var isPlayingAudio = false                // a page in this tab is making sound (see MediaBridge)
+    @Published var isMuted = false                       // the user muted this tab; kept across navigation and unloading
+    var mediaFrames: [String: (frame: WKFrameInfo, playing: Bool)] = [:]
     @Published var isPinned = false                      // pinned tabs live in the sidebar's icon grid and sort first
     @Published private(set) var failure: String?
     @Published private(set) var notice: String?          // brief, non-blocking message (e.g. "page reloaded")
@@ -119,6 +122,7 @@ final class Tab: NSObject, ObservableObject, Identifiable {
         observations.forEach { $0.invalidate() }
         observations = []
         guard let wv = webView else { return }
+        resetMedia()
         wv.stopLoading()
         // Releasing the view does not stop a page that is playing audio at once: it kept playing until WebKit got around to freeing it.
         // Pause media and replace the page with an empty one, so closing or unloading a tab always silences it. (Session state was captured before this.)
@@ -304,6 +308,7 @@ extension Tab: WKNavigationDelegate {
             webView.pageZoom = CGFloat(store?.settings.zoom(for: host) ?? 1.0)
         }
         stateDirty = true
+        resetMedia()
         store?.tabsChanged()
     }
 

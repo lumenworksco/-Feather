@@ -365,6 +365,36 @@ enum SelfTest {
         for t in [gb, gc] { store.close(t.id) }
         store.select(home.id); await pause(0.4)
 
+        // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
+        do {
+            func wav(seconds: Int) -> Data {
+                let n = 8000 * seconds
+                var d = Data("RIFF".utf8)
+                func le(_ v: Int, _ bytes: Int) { for i in 0..<bytes { d.append(UInt8((v >> (8 * i)) & 0xFF)) } }
+                le(36 + n, 4); d.append(Data("WAVEfmt ".utf8)); le(16, 4); le(1, 2); le(1, 2); le(8000, 4); le(8000, 4); le(1, 2); le(8, 2)
+                d.append(Data("data".utf8)); le(n, 4); d.append(Data(repeating: 0x80, count: n))      // 0x80 = silence
+                return d
+            }
+            let html = "<audio id=a loop src=\"data:audio/wav;base64,\(wav(seconds: 3).base64EncodedString())\"></audio>"
+            let st = store.newTab(url: URL(string: "data:text/html;base64,\(Data(html.utf8).base64EncodedString())")!)
+            await settle(st)
+            _ = try? await st.webView?.evaluateJavaScript("document.getElementById('a').play().then(function(){return 1})")
+            try? await Task.sleep(for: .seconds(1.5))
+            check("a tab with playing audio is marked as playing", st.isPlayingAudio)
+            st.setMuted(true); try? await Task.sleep(for: .seconds(0.6))
+            let mutedNow = (try? await st.webView?.evaluateJavaScript("document.getElementById('a').muted")) as? Bool
+            check("muting a tab silences its audio, and it still counts as the tab that was playing", mutedNow == true && st.isMuted && st.isPlayingAudio, "muted=\(String(describing: mutedNow)) playing=\(st.isPlayingAudio)")
+            _ = try? await st.webView?.evaluateJavaScript("document.getElementById('a').muted = false")       // a page that unmutes itself
+            try? await Task.sleep(for: .seconds(0.6))
+            let again = (try? await st.webView?.evaluateJavaScript("document.getElementById('a').muted")) as? Bool
+            check("a page that unmutes itself is muted again while the tab is muted", again == true, "muted=\(String(describing: again))")
+            st.setMuted(false); try? await Task.sleep(for: .seconds(0.6))
+            let back = (try? await st.webView?.evaluateJavaScript("document.getElementById('a').muted")) as? Bool
+            check("unmuting a tab restores its sound", back == false && !st.isMuted && st.isPlayingAudio, "muted=\(String(describing: back))")
+            store.close(st.id)
+            store.select(home.id); await pause(0.4)
+        }
+
         // --- Drag and drop semantics (the store operation the sidebar's drop handlers call).
         let da = store.newTab(url: URL(string: "https://example.com")!), db = store.newTab(url: URL(string: "https://example.org")!), dc = store.newTab(url: URL(string: "https://www.iana.org")!)
         func order() -> [Tab] { store.tabs.filter { $0 === da || $0 === db || $0 === dc } }

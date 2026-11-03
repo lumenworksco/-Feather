@@ -80,6 +80,8 @@ final class TabStore: ObservableObject {
     let address = AddressModel()
     /// Security keys (YubiKey etc.): WebKit does not offer them to third-party browsers, so Feather speaks to the key itself.
     let webauthn = WebAuthnController()
+    /// Which tabs are playing sound, and muting them.
+    private let mediaBridge = MediaBridge()
     /// New versions: found and prepared by the app, installed by the helper in Contents/Library.
     private(set) lazy var updates = Updates(store: self)
     private(set) lazy var lifecycle = LifecycleManager(store: self)
@@ -110,10 +112,13 @@ final class TabStore: ObservableObject {
         config.userContentController.addUserScript(WKUserScript(source: Self.windowMetrics, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         config.userContentController.addUserScript(WKUserScript(source: WebAuthnBridge.script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         config.userContentController.addScriptMessageHandler(WebAuthnBridge(controller: webauthn), contentWorld: .page, name: WebAuthnBridge.name)
+        config.userContentController.addUserScript(WKUserScript(source: MediaBridge.script, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .defaultClient))
+        config.userContentController.addScriptMessageHandler(mediaBridge, contentWorld: .defaultClient, name: MediaBridge.name)
         configuration = config
 
         // The profile lock comes first: a second Feather on the same profile must not write anything to it.
         sessions = SessionStore(directory: Storage.directory)
+        mediaBridge.store = self
         if !Storage.acquireProfileLock() {
             Storage.readOnly = true
             sessions.enabled = false
