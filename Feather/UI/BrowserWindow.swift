@@ -4,6 +4,9 @@ struct BrowserWindow: View {
     @ObservedObject var store: TabStore
     @ObservedObject private var settings: BrowserSettings
     @FocusState private var addressFocused: Bool
+    #if DEBUG
+    @Environment(\.openWindow) private var openWindow          // `--open-library=bookmarks|history` (screenshots)
+    #endif
     @State private var launched = false
     @State private var fullScreen = false
 
@@ -67,6 +70,12 @@ struct BrowserWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
         .onChange(of: store.addressFocusRequest) { _, _ in AddressFocus.request() }
         .onAppear {
+            #if DEBUG
+            if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--open-library=") }) {
+                store.libraryPane = arg.hasSuffix("history") ? .history : .bookmarks
+                openWindow(id: "library")
+            }
+            #endif
             AddressFocus.installClickSelectsAll()
             if store.selected?.url == nil { AddressFocus.request() }
             else {

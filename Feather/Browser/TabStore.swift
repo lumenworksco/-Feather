@@ -64,6 +64,8 @@ final class TabStore: ObservableObject {
     @Published var renamingGroup: UUID?
     /// The "Search Tabs" panel (⇧⌘A) is open.
     @Published var switcherVisible = false
+    /// Which half of the "Bookmarks and History" window shows.
+    @Published var libraryPane = LibraryPane.bookmarks
     @Published private(set) var selectedID: Tab.ID?
     /// The selected tab's URL, published here so the single, long-lived address field can follow it without being rebuilt per tab.
     @Published private(set) var selectedURL: URL?

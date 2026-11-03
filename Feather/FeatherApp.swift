@@ -48,6 +48,17 @@ struct FeatherApp: App {
                         } else { print("SNAPSHOT no window; windows=\(NSApp.windows.map { "\($0.title)|vis=\($0.isVisible)" })") }
                         fflush(stdout)
                     }
+                    if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--snapshot-library=") }) {
+                        try? await Task.sleep(for: .seconds(5))
+                        if let w = NSApp.windows.first(where: { $0.title == "Bookmarks and History" }), let v = w.contentView?.superview ?? w.contentView,
+                           let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                            v.cacheDisplay(in: v.bounds, to: rep)
+                            let out = FileManager.default.temporaryDirectory.appendingPathComponent(String(arg.dropFirst(19)))
+                            try? rep.representation(using: .png, properties: [:])?.write(to: out)
+                            print("SNAPSHOT \(out.path)")
+                        } else { print("SNAPSHOT no library window") }
+                        fflush(stdout)
+                    }
                     if CommandLine.arguments.contains("--probe") {   // prints the window id so screencapture -l can target only Feather
                         try? await Task.sleep(for: .seconds(1))
                         print("WINDOW \(NSApp.windows.first { $0.title == "Feather" }?.windowNumber ?? -1)"); fflush(stdout)
@@ -58,6 +69,9 @@ struct FeatherApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1180, height: 780)
         .commands { BrowserCommands(store: store) }
+
+        Window("Bookmarks and History", id: "library") { LibraryView(store: store) }
+            .defaultSize(width: 700, height: 560)
 
         Settings { SettingsView(store: store) }
     }

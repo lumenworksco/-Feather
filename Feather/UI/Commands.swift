@@ -5,6 +5,7 @@ struct BrowserCommands: Commands {
     @ObservedObject var history: History
     @ObservedObject var bookmarks: Bookmarks
     @ObservedObject var settings: BrowserSettings
+    @Environment(\.openWindow) private var openWindow
 
     init(store: TabStore) {
         self.store = store
@@ -84,10 +85,12 @@ struct BrowserCommands: Commands {
                 Divider()
                 Button("Show Backups in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.sessions.backupsDirectory]) }
             }
+            Button("Show All History…") { store.libraryPane = .history; openWindow(id: "library") }.keyboardShortcut("y")
             Button("Clear History") { store.clearHistory() }.disabled(history.entries.isEmpty)
         }
         CommandMenu("Bookmarks") {
             Button("Bookmark This Page") { toggleBookmark() }.keyboardShortcut("d")
+            Button("Manage Bookmarks…") { store.libraryPane = .bookmarks; openWindow(id: "library") }.keyboardShortcut("b", modifiers: [.command, .option])
             Divider()
             ForEach(bookmarks.items) { b in Button(b.title) { open(b.url) } }
         }

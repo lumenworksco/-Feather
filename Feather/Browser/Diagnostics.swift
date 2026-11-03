@@ -488,6 +488,42 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- Bookmarks and history management.
+        do {
+            let bm = Bookmarks(fileName: "selftest-bookmarks.json")
+            for id in bm.items.map(\.id) { bm.remove(ids: [id]) }
+            func add(_ t: String, _ u: String) { bm.toggle(url: URL(string: u)!, title: t) }
+            add("A", "https://a.example/"); add("B", "https://b.example/"); add("C", "https://c.example/"); add("D", "https://d.example/")
+            let ids = bm.items.map(\.id)
+            bm.setFolder([ids[1], ids[3]], to: " Work ")
+            check("filing bookmarks puts them in a (trimmed) folder, others stay unfiled", bm.folders == ["Work"] && bm.bookmarks(in: "Work").map(\.title) == ["B", "D"] && bm.bookmarks(in: nil).map(\.title) == ["A", "C"])
+            bm.move(in: "Work", from: IndexSet(integer: 1), to: 0)
+            check("reordering inside a folder leaves other bookmarks where they were", bm.bookmarks(in: "Work").map(\.title) == ["D", "B"] && bm.bookmarks(in: nil).map(\.title) == ["A", "C"] && bm.items.map(\.title) == ["A", "D", "C", "B"], "\(bm.items.map(\.title))")
+            bm.renameFolder("Work", to: "Office")
+            check("renaming a folder renames it for all its bookmarks", bm.folders == ["Office"] && bm.bookmarks(in: "Office").count == 2)
+            bm.update(ids[0], title: "  ", url: URL(string: "https://a2.example/x")!, folder: "Office")
+            check("editing a bookmark; an empty title falls back to the site name", bm.items.first { $0.id == ids[0] }.map { $0.title == "a2.example" && $0.folder == "Office" && $0.url.host == "a2.example" } == true)
+            bm.dissolveFolder("Office")
+            check("dissolving a folder keeps its bookmarks", bm.folders.isEmpty && bm.items.count == 4)
+            bm.remove(ids: [ids[0], ids[2]]); bm.flush(); Storage.drain()
+            check("deleted bookmarks stay deleted after a relaunch", Bookmarks(fileName: "selftest-bookmarks.json").items.map(\.title) == ["D", "B"], "\(Bookmarks(fileName: "selftest-bookmarks.json").items.map(\.title))")
+            let old = #"[{"id":"11111111-1111-4111-8111-111111111111","title":"Old","url":"https://old.example/"}]"#
+            check("a bookmark file from before folders still loads", (try? JSONDecoder().decode([Bookmark].self, from: Data(old.utf8)))?.first?.folder == nil)
+
+            let hist = History(fileName: "selftest-history.json")
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            func entry(_ u: String, hoursAgo: Double) -> HistoryEntry { HistoryEntry(url: u, title: u, lastVisit: now.addingTimeInterval(-hoursAgo * 3600), visits: 1) }
+            let es = [entry("https://now.example/", hoursAgo: 0.2), entry("https://hours.example/", hoursAgo: 5), entry("https://days.example/", hoursAgo: 30), entry("https://old.example/", hoursAgo: 24 * 9)]
+            hist.setEntriesForTesting(es)
+            hist.clear(since: now.addingTimeInterval(-3600))
+            check("clearing the last hour removes only what was visited in it", hist.entries.map(\.url) == ["https://hours.example/", "https://days.example/", "https://old.example/"])
+            hist.remove(ids: ["https://days.example/"])
+            check("a single history entry can be deleted", hist.entries.map(\.url) == ["https://hours.example/", "https://old.example/"])
+            var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+            let secs = HistoryGrouping.sections(es, now: now, calendar: cal)
+            check("history is grouped by day, newest first, with Today and Yesterday named", secs.first?.title == "Today" && secs.map(\.entries.count).reduce(0, +) == 4 && secs.count >= 3, "\(secs.map(\.title))")
+        }
+
         // --- Site permissions: remembered answers decide without asking, and can be changed or forgotten.
         do {
             let sp = SitePermissions(fileName: "selftest-permissions.json")
