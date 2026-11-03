@@ -348,8 +348,10 @@ private struct GroupHeader: View {
 }
 
 private struct TabMenu: View {
-    let tab: Tab
-    let store: TabStore
+    // Observed, not just held: SwiftUI skips rebuilding a view whose stored references are unchanged, so a plain `let` kept the menu
+    // as it was when the tab was created (no Mute / Picture in Picture entry once the tab started playing, a stale group list).
+    @ObservedObject var tab: Tab
+    @ObservedObject var store: TabStore
     var body: some View {
         Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { Theme.animate { store.togglePin(tab) } }
         if !tab.isPinned {
