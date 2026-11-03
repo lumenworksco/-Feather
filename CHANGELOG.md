@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.1.9-alpha (not released yet)
-- **Fixed: Picture in Picture never worked.** WKWebView on macOS has it switched off, so every video refused it, whatever the page or the menu asked for. Feather now switches it on (with a private WebKit setting that is checked for first, so a future macOS that drops it leaves PiP off instead of crashing). Checked with a real playing video: the command moves it into the floating window.
+- **Fixed: Picture in Picture never worked.** Two things were in the way. WKWebView on macOS has it switched off, so every video refused it (Feather now switches it on, with a private WebKit setting that is checked for first, so a future macOS that drops it leaves PiP off instead of crashing). And the app sandbox blocked the system's picture-in-picture service (`com.apple.PIPAgent`), so the floating window was created but stayed empty and never appeared (Feather's entitlements now allow that one service). Checked with a real playing video and a screenshot: the video moves into the floating window in the corner of the screen.
 
 ## 0.1.8-alpha
 - **Fixed:** the tab's right-click menu left out *Mute Tab* and *Picture in Picture* (and kept an out-of-date group list) because it was not rebuilt when the tab started playing sound.
