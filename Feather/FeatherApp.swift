@@ -35,6 +35,7 @@ struct FeatherApp: App {
                     }
                     if CommandLine.arguments.contains("--keyprobe") { KeyProbe.run() }
                     if CommandLine.arguments.contains("--selftest") { await SelfTest.run(store) }
+                    if CommandLine.arguments.contains("--pip-check") { await PiPCheck.run(store) }
                     if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--snapshot=") }) {
                         // Renders the window's own views (not web content or the blur material) to a PNG, for layout checks.
                         try? await Task.sleep(for: .seconds(Double(CommandLine.arguments.first { $0.hasPrefix("--snapshot-delay=") }.map { String($0.dropFirst(17)) } ?? "6") ?? 6))

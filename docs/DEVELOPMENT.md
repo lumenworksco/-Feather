@@ -67,6 +67,7 @@ Run from the repo root after a Debug build. They drive the real app and need a l
 | `tests/favicon-test.py` | favicons persist: icons are saved for two sites, the app is relaunched without loading them, and the never-loaded tab still shows its icon (sends no input) |
 | `tests/ux-test.py` | **real keyboard and mouse events**: ⌘T and typing right after it (no pause), Return, searching, ⌘W/⇧⌘T, ⌘1/2, ⌃Tab, Escape, ⌘L, pin, zoom, find, ⌘S, `target=_blank` and ⌘-click links (needs Accessibility permission; types and moves the cursor) |
 | `tests/drag-test.py` | real mouse drags in the sidebar (needs Accessibility permission for the terminal) |
+| `tests/pip-test.py` | **Picture in Picture, end to end** (needs `ffmpeg`, Accessibility permission, takes the mouse for about a minute): serves a test video from two origins, runs `Feather --pip-check`, drives the real Navigate ▸ Picture in Picture item, and requires a floating `PIPPanel` window **with content** on screen for a normal page, a video in a cross-origin iframe and a real video over https. Clicks the floating window's real close and return buttons with mouse events. Also toggling back, and closing the tab while it floats. `PIP_APP=<build>` tests another build (a Release build made with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG`). Without the PIPAgent sandbox exception it fails exactly like the bug did |
 | `tests/filmstrip.py <dir>` | not a pass/fail test: captures frames of the real window mid-animation for review |
 
 ## Known issues
