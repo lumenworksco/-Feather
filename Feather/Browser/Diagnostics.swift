@@ -392,6 +392,21 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- The downloads list.
+        do {
+            let dl = Downloads()
+            let a = DownloadItem(name: "a.zip"), b = DownloadItem(name: "b.pdf"), c = DownloadItem(name: "c.png")
+            b.state = .finished; c.state = .failed("x")
+            dl.register(a); dl.register(b); dl.register(c)
+            check("downloads are listed newest first", dl.all.map(\.name) == ["c.png", "b.pdf", "a.zip"] && dl.runningCount == 1)
+            dl.clearFinished()
+            check("Clear removes finished and failed entries but never one still running", dl.all.map(\.name) == ["a.zip"])
+            dl.cancel(a)
+            check("cancelling a running download marks it cancelled", { if case .failed("Cancelled") = a.state { return dl.runningCount == 0 } else { return false } }())
+            dl.remove(a)
+            check("removing an entry empties the list", dl.all.isEmpty && dl.latest == nil)
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {

@@ -75,6 +75,7 @@ struct Sidebar: View {
             HStack {
                 SettingsLink { Image(systemName: "gearshape").frame(width: 26, height: 26).hoverFill(radius: 7, strength: 0.10) }
                     .buttonStyle(PressStyle()).foregroundStyle(.secondary).help("Settings")
+                DownloadsButton(downloads: store.downloads)
                 Spacer()
             }
             .padding(.horizontal, 2)
@@ -100,6 +101,7 @@ struct TopBar: View {
             AddressBar(store: store, focused: focused).frame(maxWidth: 640)
             Spacer(minLength: 8)
             IconButton(symbol: "plus", help: "New Tab") { store.newTab() }
+            DownloadsButton(downloads: store.downloads)
             SettingsLink { Image(systemName: "gearshape").frame(width: 26, height: 26).hoverFill(radius: 7, strength: 0.10) }
                 .buttonStyle(PressStyle()).foregroundStyle(.secondary).help("Settings")
         }

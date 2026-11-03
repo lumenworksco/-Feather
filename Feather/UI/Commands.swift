@@ -34,6 +34,9 @@ struct BrowserCommands: Commands {
             Button("Zoom Out") { store.selected?.zoom(step: -1) }.keyboardShortcut("-")
             Button("Actual Size") { store.selected?.resetZoom() }.keyboardShortcut("0")
         }
+        CommandGroup(after: .newItem) {
+            Button("Show Downloads") { store.downloads.listVisible.toggle() }.keyboardShortcut("l", modifiers: [.command, .option])
+        }
         CommandGroup(replacing: .printItem) {
             Button("Print…") { store.selected?.printPage() }.keyboardShortcut("p")
         }
