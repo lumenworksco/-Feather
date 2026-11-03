@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.9-alpha (not released yet)
+## 0.1.9-alpha
 - **Fixed: Picture in Picture never worked.** Two things were in the way. WKWebView on macOS has it switched off, so every video refused it (Feather now switches it on, with a private WebKit setting that is checked for first, so a future macOS that drops it leaves PiP off instead of crashing). And the app sandbox blocked the system's picture-in-picture service (`com.apple.PIPAgent`), so the floating window was created but stayed empty and never appeared (Feather's entitlements now allow that one service). Checked end to end with real mouse clicks: the right-click menu, the Navigate menu, the floating window's own close and return buttons, a background tab, a video inside another site's iframe and a real video from the internet all work (`tests/pip-test.py`).
 
 ## 0.1.8-alpha
