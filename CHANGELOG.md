@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8-alpha
+- **Fixed:** the tab's right-click menu left out *Mute Tab* and *Picture in Picture* (and kept an out-of-date group list) because it was not rebuilt when the tab started playing sound.
+- **Split view**: right-click a tab ▸ *Open Side by Side with Current Tab*. Click a page to make it active; picking another tab or *Exit Split View* ends it. Both halves stay loaded; not saved across restarts; always 50/50.
+- **Bookmarks and History window** (⌥⌘B / ⌘Y): search, edit, reorder, delete, bookmark folders; history by day with clear last hour / today / all.
+- **Secure connections only** (on by default; Settings ▸ Privacy): `http://` pages open as `https://`, with a warning and an explicit "open without encryption" choice when there is no secure version. Local and port addresses are left alone.
+- **Site permissions**: Feather now asks before a site uses the camera or microphone, remembers answers if you tick the box, and Settings lists and undoes them. Location stays with macOS.
+- Slow pages: tabs kept only because a page was loading or slow to answer are tried again a few times, instead of staying loaded.
 ## 0.1.7-alpha
 - **Tab groups, more.** Folding a group now **unloads its tabs** (the selected tab and any tab with typed-in text, sound, camera/microphone use or a pending security key stay). Drag a whole group to reorder it, use the **+** on a group header (or right-click ▸ New Tab in Group) for a new tab inside it, and drop a tab or group on the New Tab row to put it at the very top. **Settings ▸ Tab groups** can fold groups you haven't used for 30 minutes to 4 hours (off by default).
 - **Search Tabs** (⇧⌘A): find an open tab, a bookmark or a page from history by typing part of its name or address. (It is not ⌘K, which many websites use.)

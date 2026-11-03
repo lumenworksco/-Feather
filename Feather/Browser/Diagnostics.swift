@@ -488,6 +488,27 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- Split view: two tabs side by side; clicking another tab ends it; closing a half ends it; both halves stay loaded.
+        do {
+            let sa = store.newTab(url: URL(string: "https://example.com")!), sb = store.newTab(url: URL(string: "https://example.org")!), sc = store.newTab(url: URL(string: "https://www.iana.org")!)
+            await settle(sa); await settle(sb); await settle(sc)
+            store.select(sa.id)
+            store.openSplit(with: sb)
+            check("opening a split shows the current tab and the chosen one", store.splitTabs.map { $0.left === sa && $0.right === sb } == true && sb.isLoaded)
+            store.select(sb.id)
+            check("clicking the other half keeps the split and makes that half active", store.splitTabs != nil && store.selectedID == sb.id)
+            store.select(sc.id)
+            check("picking a tab outside the pair ends the split", store.split == nil && store.splitTabs == nil)
+            store.select(sa.id); store.openSplit(with: sb)
+            await store.lifecycle.unload([sb])
+            check("the other half is never unloaded while the split is open", sb.isLoaded)
+            store.close(sb.id)
+            check("closing one half ends the split and leaves the other open", store.split == nil && store.tabs.contains { $0 === sa })
+            check("a tab cannot be split with itself", { store.openSplit(with: sa); return store.split == nil }())
+            store.close(sa.id); store.close(sc.id)
+            store.select(home.id); await pause(0.4)
+        }
+
         // --- Bookmarks and history management.
         do {
             let bm = Bookmarks(fileName: "selftest-bookmarks.json")
@@ -685,7 +706,8 @@ enum SelfTest {
             check("find bar opens with its field focused", findField == "Find in page", "(\(findField ?? "none"))")
             z.findQuery = "a"; z.find(); await pause(0.8)
             check("find reports a match for common text", z.findNoMatch == false)
-            z.findQuery = "zzzxq9wv"; z.find(); await pause(0.8)
+            z.findQuery = "zzzxq9wv"; z.find()
+            await waitUntil(8) { z.findNoMatch == true }              // the page may be slow to answer
             check("find reports no match for gibberish", z.findNoMatch == true)
             z.closeFind()
         }

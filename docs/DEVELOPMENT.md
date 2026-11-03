@@ -21,6 +21,15 @@ WebKit has no public API for "this tab is playing audio" or for muting a web vie
 ## Content blocking (`ContentBlocker.swift`)
 One compiled `WKContentRuleList` on the shared `WKUserContentController`: a block rule per domain (`load-type: third-party`, so a site's own resources are never touched), then one `ignore-previous-rules` rule per excepted site. `ignore-previous-rules` only reaches back within the same list, so block rules and exceptions are compiled together and the list is swapped when the exceptions change. Lists are cached by a hash of their JSON; stale ones are removed. Launch waits at most 1.5 s for the rules, so the first page is covered. The self-test proves block, exception and removal on a page that was already open.
 
+## Split view (`SplitView.swift`)
+`TabStore.split` is a pair of tab ids. It shows only while the selected tab is one of them; selecting any other tab, or closing either half, clears it. `SplitFocus` is a mouse-down monitor that makes the clicked pane's tab the selected one (the click itself still goes to the page). `LifecycleManager` never unloads a split member. Not persisted.
+
+## Bookmarks and History window (`UI/Library.swift`)
+A separate `Window("Bookmarks and History", id: "library")` (its title must never be "Feather": tests and focus code look windows up by that title). Data operations live on `Bookmarks` (folders are just an optional `folder` name on each bookmark; reordering is per folder) and `History` (`clear(since:)`, `remove(ids:)`, `HistoryGrouping` for the day sections), all covered by the self-test. Debug options for screenshots: `--open-library=bookmarks|history` with `--snapshot-library=name.png`, and `--open-split` for the first two tabs.
+
+## HTTPS-only (`HTTPSOnly.swift`) and permissions (`SitePermissions.swift`)
+`HTTPSOnly.upgraded` decides what to upgrade (main-frame navigations only; local names, IPs, single-word hosts and explicit ports are exempt). The tab cancels the http navigation and loads the https one; if that fails with a "no secure version" error, or the site bounces straight back to http, `Tab.insecureOffer` is set and the error page offers the plain page (`continueInsecurely`, remembered per site until quit). Camera and microphone prompts are taken over from WebKit (`requestMediaCapturePermissionFor`), so answers can be stored (`permissions.json`) and listed; WebKit gives no hook for location.
+
 ## Search Tabs (`QuickSearch.swift`, `UI/QuickSwitcher.swift`)
 `QuickSearch.results` is a pure function (self-tested): every word must match title or address; tabs, then bookmarks, then history; a page already open is not offered twice. The panel's text field is an `NSTextField` (not SwiftUI focus) so arrows, Return and Escape reach it. The shortcut is ⇧⌘A because a menu shortcut on ⌘K would take it away from websites that use it.
 

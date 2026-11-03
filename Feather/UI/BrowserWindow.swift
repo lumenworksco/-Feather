@@ -30,7 +30,11 @@ struct BrowserWindow: View {
                         TopBar(store: store, focused: $addressFocused)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    if let tab = store.selected { ContentArea(tab: tab, store: store) } else { Spacer() }
+                    if let pair = store.splitTabs {
+                        SplitContent(left: pair.left, right: pair.right, store: store)
+                    } else if let tab = store.selected {
+                        ContentArea(tab: tab, store: store)
+                    } else { Spacer() }
                 }
                 // With the sidebar showing, the page is a rounded card inset from the window edge.
                 .clipShape(RoundedRectangle(cornerRadius: sidebar ? 10 : 0, style: .continuous))
@@ -71,6 +75,10 @@ struct BrowserWindow: View {
         .onChange(of: store.addressFocusRequest) { _, _ in AddressFocus.request() }
         .onAppear {
             #if DEBUG
+            if CommandLine.arguments.contains("--open-split"), store.tabs.count >= 2 {        // the first two tabs side by side (screenshots)
+                store.select(store.tabs[0].id)
+                store.openSplit(with: store.tabs[1])
+            }
             if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--open-library=") }) {
                 store.libraryPane = arg.hasSuffix("history") ? .history : .bookmarks
                 openWindow(id: "library")
@@ -357,6 +365,40 @@ struct AddressBar: View {
 }
 
 // MARK: - Content
+
+/// Two pages side by side. The active one (the one you last clicked) has an accent outline.
+private struct SplitContent: View {
+    let left: Tab
+    let right: Tab
+    @ObservedObject var store: TabStore
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // A strip of its own, so the button never covers part of a page.
+            Button { Theme.animate { store.closeSplit() } } label: {
+                Label("Exit Split View", systemImage: "rectangle.split.2x1.slash").font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10).padding(.vertical, 3)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(PressStyle(scale: 0.95)).frame(height: 26).help("Back to one page")
+            HStack(spacing: 8) {
+                pane(left)
+                pane(right)
+            }
+            .padding(.horizontal, 8).padding(.bottom, 8)
+        }
+        .onAppear { SplitFocus.install(store) }
+    }
+
+    private func pane(_ tab: Tab) -> some View {
+        let active = tab.id == store.selectedID
+        return ContentArea(tab: tab, store: store)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(active ? Brand.accent : Color.primary.opacity(0.12), lineWidth: active ? 2 : 1))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .motion(Theme.quick, value: active)
+    }
+}
 
 private struct ContentArea: View {
     @ObservedObject var tab: Tab

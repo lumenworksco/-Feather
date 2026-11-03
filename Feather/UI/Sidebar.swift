@@ -354,6 +354,11 @@ private struct TabMenu: View {
     @ObservedObject var store: TabStore
     var body: some View {
         Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { Theme.animate { store.togglePin(tab) } }
+        if tab.id != store.selectedID {
+            Button("Open Side by Side with Current Tab") { Theme.animate { store.openSplit(with: tab) } }
+        } else if store.split?.contains(tab.id) == true {
+            Button("Exit Split View") { Theme.animate { store.closeSplit() } }
+        }
         if !tab.isPinned {
             Menu("Add to Group") {
                 Button("New Group") { Theme.animate { store.newGroup(with: tab) } }

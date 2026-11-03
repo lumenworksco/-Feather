@@ -64,6 +64,8 @@ final class TabStore: ObservableObject {
     @Published var renamingGroup: UUID?
     /// The "Search Tabs" panel (⇧⌘A) is open.
     @Published var switcherVisible = false
+    /// Two tabs shown side by side (see SplitView.swift); nil when there is no split.
+    @Published var split: SplitPair?
     /// Which half of the "Bookmarks and History" window shows.
     @Published var libraryPane = LibraryPane.bookmarks
     @Published private(set) var selectedID: Tab.ID?
@@ -245,6 +247,7 @@ final class TabStore: ObservableObject {
     func select(_ id: Tab.ID) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         selected?.lastActive = Date()
+        if let s = split, !s.contains(id) { split = nil }             // picking a tab outside the pair ends the split
         selectedID = id
         selectedURL = tab.url
         // Updated here, synchronously, not from a view's onChange: anything typed after this point must never be overwritten.
@@ -269,6 +272,7 @@ final class TabStore: ObservableObject {
         if let wv = tabs.first(where: { $0.id == id })?.webView { webauthn.cancel(webView: wv) }
         guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: i)
+        if split?.contains(id) == true { split = nil }                // the other half simply carries on as a normal tab
         let closedGroup = group(tab.groupID)
         dropEmptyGroups(tab.groupID)
         if var closed = tab.close() {

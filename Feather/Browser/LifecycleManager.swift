@@ -65,7 +65,7 @@ final class LifecycleManager {
     private func run(limit: Int) async {
         let mode = store.settings.inactiveMode
         let now = Date()
-        let inactive = store.tabs.filter { $0.isLoaded && $0.id != store.selectedID }.sorted { $0.lastActive > $1.lastActive }
+        let inactive = store.tabs.filter { $0.isLoaded && $0.id != store.selectedID && !store.isSplitMember($0) }.sorted { $0.lastActive > $1.lastActive }
         sawTimeout = false
         let keep = max(0, limit - 1)
         var doomed = Array(inactive.dropFirst(keep))
@@ -118,6 +118,7 @@ final class LifecycleManager {
     private func canUnload(_ tab: Tab) async -> Bool {
         guard let wv = tab.webView, !tab.isLoading else { return false }
         if let host = tab.url?.host, store.settings.isExcluded(host) { return false }
+        if store.isSplitMember(tab) { return false }            // shown next to the active tab
         if store.webauthn.isBusy(wv) { return false }          // a security-key sign-in is waiting for a touch
         if wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none { return false }
         let host = tab.url?.host ?? "-"

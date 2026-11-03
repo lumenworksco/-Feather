@@ -18,6 +18,10 @@ A small, native macOS browser built on WebKit. Vertical sidebar tabs, a calm int
 - **Search Tabs** (⇧⌘A): type part of a title or address to jump to an open tab, a bookmark or a page from your history.
 - **Sound.** Tabs that play sound show a speaker you can click to mute; right-click a tab for Picture in Picture. This watches the page's `<audio>` and `<video>` elements, so sound made another way (Web Audio, as in some games) is not detected.
 - **Downloads list** (button beside the gear, or ⌥⌘L): progress, open, show in Finder, cancel, remove. The list is for this session; the files stay in ~/Downloads.
+- **Split view**: right-click a tab ▸ *Open Side by Side with Current Tab* shows two pages next to each other. Click a page to make it the active one (the address bar and back/forward follow it); picking any other tab, or *Exit Split View*, returns to one page. The pair is not saved across restarts and the split is always 50/50.
+- **Bookmarks and History window** (⌥⌘B, ⌘Y): search, open, edit, reorder, delete, one-level **folders** for bookmarks, and history grouped by day with *Clear last hour / today / all*.
+- **Secure connections only** (Settings ▸ Privacy, on by default): `http://` addresses open as `https://`. If a site has no secure version Feather says so and lets you open the plain page on purpose (remembered until you quit). Addresses on your own computer or network and addresses with a port are left alone. This covers the page itself, not images or scripts inside it.
+- **Site permissions** (Settings): Feather asks before a site uses your camera or microphone and can remember the answer; the list shows every remembered answer and lets you change or forget it. Location is asked by macOS, not Feather.
 - **Ad and tracker blocking** (Settings ▸ Content blocking): a short built-in list of advertising and tracking companies, applied by WebKit to requests a page makes to *other* sites; right-click a tab to turn it off for a site. It is **not a full ad blocker**: it does not hide ads a site serves itself (YouTube's, for example).
 - **One address bar** for URLs and Google searches. It takes focus on every new tab.
 - **Memory-conscious by design.** Blank and restored tabs have no web view at all; pages in tabs you haven't visited are unloaded according to a setting (Balanced / Memory Saver / Aggressive). A tab is never unloaded while it is loading, playing media, using the camera or microphone, on an excluded site, or has text typed into a form.
@@ -62,7 +66,7 @@ Feather asks GitHub for the newest release about once a day (**Settings ▸ Upda
 
 ## What's not there yet
 
-No password manager or AutoFill, no passkeys stored on the Mac (USB security keys work, see above), no extensions, no full ad blocker (only the short built-in tracker list above), no private browsing, no sync, one window only. Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
+No password manager or AutoFill, no passkeys stored on the Mac (USB security keys work, see above), no extensions, no full ad blocker (only the short built-in tracker list above), no private browsing, no sync, one browser window (plus the Bookmarks and History window). Text typed into a web form and a page's JavaScript state are **not** restored after a crash. Sign-in flows for large sites (Google, Microsoft) inside `WKWebView` are not systematically tested.
 
 ## Memory: a goal, not a result
 
@@ -96,6 +100,7 @@ The app is signed ad hoc, not with a Developer ID, and is not notarized. If you 
 | Bookmark page | ⌘D | Find in page | ⌘F, ⌘G, ⇧⌘G |
 | Zoom in / out / reset | ⌘= (⌘+) / ⌘- / ⌘0 | Print | ⌘P |
 | Search tabs | ⇧⌘A | Show downloads | ⌥⌘L |
+| Manage bookmarks | ⌥⌘B | Show history | ⌘Y |
 
 ## Development
 
