@@ -62,6 +62,8 @@ final class TabStore: ObservableObject {
     @Published var groups: [TabGroup] = []
     /// The group whose name is being edited in the sidebar.
     @Published var renamingGroup: UUID?
+    /// The "Search Tabs" panel (⇧⌘A) is open.
+    @Published var switcherVisible = false
     @Published private(set) var selectedID: Tab.ID?
     /// The selected tab's URL, published here so the single, long-lived address field can follow it without being rebuilt per tab.
     @Published private(set) var selectedURL: URL?

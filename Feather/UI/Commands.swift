@@ -50,6 +50,7 @@ struct BrowserCommands: Commands {
             Button("Back") { store.selected?.goBack() }.keyboardShortcut("[")
             Button("Forward") { store.selected?.goForward() }.keyboardShortcut("]")
             Button("Reload / Stop") { store.selected?.reloadOrStop() }.keyboardShortcut("r")
+            Button("Search Tabs…") { store.showSwitcher() }.keyboardShortcut("a", modifiers: [.command, .shift])
             Button("Mute / Unmute Tab") { store.selected?.toggleMute() }
             Button("Picture in Picture") { store.selected?.pictureInPicture() }
             Button("Pin / Unpin Tab") { if let tab = store.selected { store.togglePin(tab) } }.keyboardShortcut("p", modifiers: [.command, .shift])

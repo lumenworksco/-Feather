@@ -54,6 +54,8 @@ struct BrowserWindow: View {
             .padding(.top, 46).padding(.horizontal, 24)
         }
         .overlay { KeySheet(controller: store.webauthn) }
+        .overlay { if store.switcherVisible { QuickSwitcher(store: store) } }
+        .motion(Theme.quick, value: store.switcherVisible)
         .opacity(launched ? 1 : 0)
         .scaleEffect(launched ? 1 : 0.985)
         .ignoresSafeArea()

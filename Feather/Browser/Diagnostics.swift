@@ -407,6 +407,25 @@ enum SelfTest {
             check("removing an entry empties the list", dl.all.isEmpty && dl.latest == nil)
         }
 
+        // --- The quick switcher's search.
+        do {
+            let t1 = UUID(), t2 = UUID()
+            let tabs = [QuickSearch.TabInfo(id: t1, title: "Swift Evolution", url: URL(string: "https://forums.swift.org/evolution")),
+                        QuickSearch.TabInfo(id: t2, title: "Inbox", url: URL(string: "https://mail.example.com/inbox"))]
+            let marks = [Bookmark(title: "Swift Package Index", url: URL(string: "https://swiftpackageindex.com")!),
+                         Bookmark(title: "Wikipedia", url: URL(string: "https://www.wikipedia.org")!)]
+            let hist = [HistoryEntry(url: "https://forums.swift.org/evolution", title: "Swift Evolution", lastVisit: Date(), visits: 3),
+                        HistoryEntry(url: "https://docs.swift.org/book", title: "The Swift Book", lastVisit: Date(), visits: 1)]
+            func q(_ s: String) -> [QuickResult] { QuickSearch.results(query: s, tabs: tabs, bookmarks: marks, history: hist) }
+            check("an empty query lists the open tabs, most recent first, and nothing else", q("").map(\.label) == ["Tab", "Tab"])
+            check("a word matches titles and addresses, tabs before bookmarks before history", q("swift").map(\.label) == ["Tab", "Bookmark", "History", "Go"], "\(q("swift").map(\.title))")
+            check("a page that is already open is not offered again from history", q("evolution").filter { $0.title == "Swift Evolution" }.count == 1)
+            check("every word must match", q("swift book").dropLast().map(\.title) == ["The Swift Book"], "\(q("swift book").map(\.title))")
+            check("a prefix of the site name matches (wiki finds Wikipedia)", q("wiki").first?.title == "Wikipedia")
+            check("an unmatched query still offers to search for it", q("zzzq").map(\.label) == ["Go"] && q("zzzq").first?.kind == .search("zzzq"))
+            check("matching ignores case", q("INBOX").first?.kind == .tab(t2))
+        }
+
         // --- Sound: a tab playing audio is noticed, can be muted (and stays "playing" underneath), and unmuted again.
         do {
             func wav(seconds: Int) -> Data {
