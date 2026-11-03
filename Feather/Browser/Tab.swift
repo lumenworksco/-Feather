@@ -21,7 +21,7 @@ final class Tab: NSObject, ObservableObject, Identifiable {
     var mediaFrames: [String: (frame: WKFrameInfo, playing: Bool)] = [:]
     /// Set when the secure (https) version of an http address could not be reached: the page the user can choose to open instead.
     @Published private(set) var insecureOffer: URL?
-    private var lastUpgrade: (host: String, date: Date, original: URL)?
+    var lastUpgrade: (host: String, date: Date, original: URL)?            // (internal: the self-test feeds a failure through `report`)
     @Published var isPinned = false                      // pinned tabs live in the sidebar's icon grid and sort first
     @Published private(set) var failure: String?
     @Published private(set) var notice: String?          // brief, non-blocking message (e.g. "page reloaded")
@@ -363,7 +363,7 @@ extension Tab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { report(error) }
 
     /// Default TLS validation is untouched: bad certificates arrive here as errors, never as silent bypasses.
-    private func report(_ error: Error) {
+    func report(_ error: Error) {
         restoreStart = nil
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain, ns.code == NSURLErrorCancelled { return }
@@ -400,6 +400,24 @@ extension Tab: WKUIDelegate {
     }
 
     func webViewDidClose(_ webView: WKWebView) { store?.close(id) }
+
+    /// Camera and microphone: Feather asks (and remembers, if the user says so) instead of WebKit, so answers can be reviewed and undone in Settings.
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo,
+                 type: WKMediaCaptureType, decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
+        guard let store else { decisionHandler(.deny); return }
+        let host = origin.host.lowercased(), kinds = SitePermissions.kinds(for: type)
+        switch store.permissions.verdict(host: host, kinds: kinds) {
+        case .grant: decisionHandler(.grant)
+        case .deny: decisionHandler(.deny)
+        case .ask:
+            // Like other browsers, only the page the user is looking at may ask (a background tab must not cover the window with a question).
+            guard store.selectedID == id, webView.window?.isKeyWindow == true else { decisionHandler(.deny); return }
+            SitePermissions.ask(host: host, kinds: kinds, window: webView.window) { [weak store] allowed, remember in
+                if remember { kinds.forEach { store?.permissions.set(host: host, $0, to: allowed ? .allow : .block) } }
+                decisionHandler(allowed ? .grant : .deny)
+            }
+        }
+    }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {

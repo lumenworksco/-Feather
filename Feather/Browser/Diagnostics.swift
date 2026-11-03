@@ -488,6 +488,25 @@ enum SelfTest {
             store.select(home.id); await pause(0.4)
         }
 
+        // --- Site permissions: remembered answers decide without asking, and can be changed or forgotten.
+        do {
+            let sp = SitePermissions(fileName: "selftest-permissions.json")
+            check("an unknown site is asked", sp.verdict(host: "meet.example", kinds: [.camera, .microphone]) == .ask)
+            sp.set(host: "Meet.Example", .camera, to: .allow)
+            check("allowing only the camera still asks when the microphone is also wanted", sp.verdict(host: "meet.example", kinds: [.camera]) == .grant && sp.verdict(host: "meet.example", kinds: [.camera, .microphone]) == .ask)
+            sp.set(host: "meet.example", .microphone, to: .allow)
+            check("allowed for both kinds is granted without asking (host matched ignoring case)", sp.verdict(host: "MEET.example", kinds: [.camera, .microphone]) == .grant)
+            sp.set(host: "meet.example", .microphone, to: .block)
+            check("a blocked kind denies the whole request", sp.verdict(host: "meet.example", kinds: [.camera, .microphone]) == .deny && sp.verdict(host: "meet.example", kinds: [.camera]) == .grant)
+            Storage.drain()                                              // saving happens in the background
+            let reloaded = SitePermissions(fileName: "selftest-permissions.json")
+            check("answers survive a relaunch", reloaded.entries == sp.entries && reloaded.entries.count == 1)
+            sp.set(host: "meet.example", .camera, to: nil); sp.set(host: "meet.example", .microphone, to: nil)
+            check("setting both back to ask removes the site from the list", sp.entries.isEmpty && sp.verdict(host: "meet.example", kinds: [.camera]) == .ask)
+            sp.set(host: "other.example", .camera, to: .block); sp.forgetAll(); Storage.drain()
+            check("Forget All empties the list", sp.entries.isEmpty && SitePermissions(fileName: "selftest-permissions.json").entries.isEmpty)
+        }
+
         // --- HTTPS-only mode.
         do {
             func up(_ s: String, allowed: Set<String> = []) -> String? { HTTPSOnly.upgraded(URL(string: s)!, allowed: allowed)?.absoluteString }
@@ -503,13 +522,17 @@ enum SelfTest {
             let ht = store.newTab(url: URL(string: "http://example.com/")!)
             await waitUntil(15) { ht.webView?.url?.scheme == "https" }
             check("a real http:// page is opened as https://", ht.webView?.url?.scheme == "https", "\(ht.webView?.url?.absoluteString ?? "nil")")
-            let nt = store.newTab(url: URL(string: "http://neverssl.com/")!)
-            await waitUntil(25) { nt.insecureOffer != nil }
-            check("a site with no secure version shows the warning and offers http", nt.insecureOffer?.host?.hasSuffix("neverssl.com") == true && nt.insecureOffer?.scheme == "http" && nt.failure != nil, "\(String(describing: nt.insecureOffer)) \(nt.failure ?? "no failure")")
-            let offeredHost = nt.insecureOffer?.host ?? ""
+            // No secure version: feed the failure a real upgrade attempt would produce, and check what the tab then offers.
+            let nt = store.newTab(url: URL(string: "https://example.com/")!)
+            await settle(nt)
+            nt.lastUpgrade = (host: "example.com", date: Date(), original: URL(string: "http://example.com/")!)
+            nt.report(NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost, userInfo: [NSURLErrorFailingURLErrorKey: URL(string: "https://example.com/")!]))
+            check("a site with no secure version shows the warning and offers http", nt.insecureOffer?.absoluteString == "http://example.com/" && (nt.failure ?? "").contains("secure"), "\(String(describing: nt.insecureOffer)) \(nt.failure ?? "no failure")")
             nt.continueInsecurely()
-            await waitUntil(25) { nt.webView?.url?.scheme == "http" && nt.failure == nil }
-            check("choosing 'open without encryption' loads the http page once, and remembers the site", nt.webView?.url?.scheme == "http" && store.insecureAllowed.contains(offeredHost), "\(nt.webView?.url?.absoluteString ?? "nil") \(nt.failure ?? "")")
+            await waitUntil(15) { nt.webView?.url?.scheme == "http" && nt.failure == nil }
+            check("choosing 'open without encryption' loads the http page once, and remembers the site", nt.webView?.url?.scheme == "http" && store.insecureAllowed.contains("example.com") && nt.insecureOffer == nil, "\(nt.webView?.url?.absoluteString ?? "nil") \(nt.failure ?? "")")
+            nt.report(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [NSURLErrorFailingURLErrorKey: URL(string: "https://example.com/")!]))
+            check("being offline does not offer http", nt.insecureOffer == nil)
             store.close(ht.id); store.close(nt.id)
             store.select(home.id); await pause(0.4)
         }

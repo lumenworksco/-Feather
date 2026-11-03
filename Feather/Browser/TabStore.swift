@@ -79,6 +79,8 @@ final class TabStore: ObservableObject {
     let bookmarks = Bookmarks()
     let favicons = Favicons()
     let downloads = Downloads()
+    /// Remembered camera and microphone answers per site.
+    let permissions = SitePermissions()
     let address = AddressModel()
     /// Security keys (YubiKey etc.): WebKit does not offer them to third-party browsers, so Feather speaks to the key itself.
     let webauthn = WebAuthnController()

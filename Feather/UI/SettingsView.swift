@@ -78,6 +78,7 @@ struct SettingsView: View {
                 Text("Blocking is off on the sites listed above (right-click a tab to add one). It stops a page's requests to a short built-in list of ad and tracking companies; it does not hide ads a site serves itself (YouTube's, for example), so it is not a full ad blocker.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            SitePermissionsSection(permissions: store.permissions)
             Section("Never unload these sites") {
                 ForEach(settings.excludedHosts, id: \.self) { host in
                     HStack { Text(host); Spacer(); Button("Remove") { settings.removeExcluded(host) }.buttonStyle(.borderless) }
